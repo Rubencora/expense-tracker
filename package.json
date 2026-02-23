@@ -11,13 +11,19 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@shadcn/ui": "^0.0.4",
+    "autoprefixer": "^10.4.24",
+    "dotenv": "^17.3.1",
     "next": "14.2.0",
+    "postcss": "^8.5.6",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
+    "prisma": "^7.4.1",
     "typescript": "^5",
     "vitest": "^1"
   }

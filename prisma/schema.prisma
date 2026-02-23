@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  Int      @id @default(autoincrement())
+  email               String   @unique
+  name                String
+  password_hash       String
+  api_token           String   @unique
+  telegram_chat_id    String?
+  default_currency    String   @default("COP")
+  timezone            String   @default("America/Bogota")
+  onboarding_completed Boolean
+  created_at          DateTime @default(now())
+
+  categories          Category[]
+  expenses            Expense[]
+  spaces              Space[]
+  space_memberships   SpaceMember[]
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  name        String
+  emoji       String
+  color       String
+  is_default  Boolean
+  is_active   Boolean
+  sort_order  Int
+  created_at  DateTime @default(now())
+
+  user        User     @relation(fields: [user_id], references: [id])
+  expenses    Expense[]
+
+  @@unique([user_id, name])
+}
+
+model Expense {
+  id              Int      @id @default(autoincrement())
+  user_id         Int
+  space_id        Int?
+  category_id     Int
+  merchant        String
+  amount          Decimal
+  currency        String
+  amount_usd      Decimal
+  description_ai  String?
+  source          String
+  created_at      DateTime @default(now())
+
+  user            User     @relation(fields: [user_id], references: [id])
+  category        Category @relation(fields: [category_id], references: [id])
+  space           Space?   @relation(fields: [space_id], references: [id])
+}
+
+model Space {
+  id          Int           @id @default(autoincrement())
+  name        String
+  created_by  Int
+  invite_code String        @unique
+  created_at  DateTime      @default(now())
+
+  creator     User          @relation(fields: [created_by], references: [id])
+  space_members SpaceMember[]
+  expenses     Expense[]
+}
+
+model SpaceMember {
+  id         Int     @id @default(autoincrement())
+  space_id   Int
+  user_id    Int
+  role       String
+  joined_at  DateTime @default(now())
+
+  space      Space   @relation(fields: [space_id], references: [id])
+  user       User    @relation(fields: [user_id], references: [id])
+
+  @@unique([space_id, user_id])
+}
