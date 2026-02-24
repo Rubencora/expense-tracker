@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Users, Copy, Trash2 } from "lucide-react";
+import { Users, Copy, Trash2, LogOut, Mail, Loader2 } from "lucide-react";
 
 interface SpaceInfo {
   id: string;
@@ -49,6 +49,10 @@ export default function EspaciosPage() {
   const [membersDialog, setMembersDialog] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const [leaveLoading, setLeaveLoading] = useState<string | null>(null);
 
   const fetchSpaces = useCallback(async () => {
     try {
@@ -121,6 +125,52 @@ export default function EspaciosPage() {
   const copyInviteCode = (code: string) => {
     navigator.clipboard.writeText(code);
     toast.success("Codigo copiado al portapapeles");
+  };
+
+  const handleDeleteSpace = async (spaceId: string, spaceName: string) => {
+    if (!confirm(`¿Eliminar el espacio "${spaceName}"? Los gastos se moveran a Personal.`)) return;
+    setDeleteLoading(spaceId);
+    try {
+      await apiClient(`/api/spaces/${spaceId}`, { method: "DELETE" });
+      toast.success("Espacio eliminado");
+      fetchSpaces();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al eliminar");
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  const handleLeaveSpace = async (spaceId: string, spaceName: string) => {
+    if (!confirm(`¿Salir del espacio "${spaceName}"?`)) return;
+    setLeaveLoading(spaceId);
+    try {
+      await apiClient(`/api/spaces/${spaceId}/leave`, { method: "POST" });
+      toast.success("Saliste del espacio");
+      fetchSpaces();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al salir");
+    } finally {
+      setLeaveLoading(null);
+    }
+  };
+
+  const handleInviteByEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!membersDialog || !inviteEmail) return;
+    setInviteLoading(true);
+    try {
+      const result = await apiClient<{ message: string }>(`/api/spaces/${membersDialog}/invite`, {
+        method: "POST",
+        body: JSON.stringify({ email: inviteEmail }),
+      });
+      toast.success(result.message);
+      setInviteEmail("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al enviar invitacion");
+    } finally {
+      setInviteLoading(false);
+    }
   };
 
   if (loading) {
@@ -207,6 +257,19 @@ export default function EspaciosPage() {
                   className="text-text-muted hover:text-text-secondary text-xs">
                   Miembros
                 </Button>
+                {space.role === "OWNER" ? (
+                  <Button variant="ghost" size="sm" onClick={() => handleDeleteSpace(space.id, space.name)}
+                    disabled={deleteLoading === space.id}
+                    className="text-red-accent hover:bg-red-accent/10">
+                    {deleteLoading === space.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => handleLeaveSpace(space.id, space.name)}
+                    disabled={leaveLoading === space.id}
+                    className="text-amber-400 hover:bg-amber-400/10">
+                    {leaveLoading === space.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -265,6 +328,27 @@ export default function EspaciosPage() {
                   </div>
                 </div>
               ))}
+
+              {/* Invite by email */}
+              <div className="pt-3 border-t border-border-subtle">
+                <p className="text-xs font-medium text-text-secondary mb-2 flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5" /> Invitar por email
+                </p>
+                <form onSubmit={handleInviteByEmail} className="flex gap-2">
+                  <Input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="correo@ejemplo.com"
+                    required
+                    className="bg-surface-raised/50 border-border-subtle h-9 rounded-xl text-sm"
+                  />
+                  <Button type="submit" size="sm" disabled={inviteLoading}
+                    className="bg-brand hover:bg-brand-dark text-white shrink-0">
+                    {inviteLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Invitar"}
+                  </Button>
+                </form>
+              </div>
             </div>
           )}
         </DialogContent>

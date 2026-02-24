@@ -18,6 +18,12 @@ enum SpaceRole {
   MEMBER
 }
 
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
 model User {
   id                   String        @id @default(cuid())
   email                String        @unique
@@ -33,12 +39,13 @@ model User {
   onboardingCompleted  Boolean       @default(false) @map("onboarding_completed")
   createdAt            DateTime      @default(now()) @map("created_at")
 
-  categories    Category[]
-  expenses      Expense[]
+  categories       Category[]
+  expenses         Expense[]
   spaceMemberships SpaceMember[]
-  spacesCreated Space[]       @relation("SpaceCreator")
-  budgets       Budget[]
-  defaultSpace  Space?        @relation("DefaultSpace", fields: [defaultSpaceId], references: [id])
+  spacesCreated    Space[]           @relation("SpaceCreator")
+  budgets          Budget[]
+  defaultSpace     Space?            @relation("DefaultSpace", fields: [defaultSpaceId], references: [id])
+  sentInvitations  SpaceInvitation[] @relation("InvitedBy")
 
   @@map("users")
 }
@@ -91,10 +98,11 @@ model Space {
   inviteCode String   @unique @default(cuid()) @map("invite_code")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  creator         User          @relation("SpaceCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  creator         User              @relation("SpaceCreator", fields: [createdBy], references: [id], onDelete: Cascade)
   members         SpaceMember[]
   expenses        Expense[]
-  defaultForUsers User[]        @relation("DefaultSpace")
+  defaultForUsers User[]            @relation("DefaultSpace")
+  invitations     SpaceInvitation[]
 
   @@map("spaces")
 }
@@ -125,4 +133,21 @@ model Budget {
 
   @@unique([userId, categoryId])
   @@map("budgets")
+}
+
+model SpaceInvitation {
+  id        String           @id @default(cuid())
+  spaceId   String           @map("space_id")
+  email     String
+  token     String           @unique @default(cuid())
+  status    InvitationStatus @default(PENDING)
+  invitedBy String           @map("invited_by")
+  expiresAt DateTime         @map("expires_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  space   Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  inviter User  @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@map("space_invitations")
 }

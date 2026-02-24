@@ -4,6 +4,7 @@ import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { convertToUSD } from "@/lib/currency";
 import { Prisma } from "@/generated/prisma/client";
+import { isSpaceMember } from "@/lib/space-auth";
 
 const createExpenseSchema = z.object({
   merchant: z.string().min(1, "Comercio requerido"),
@@ -24,16 +25,24 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const cursor = searchParams.get("cursor");
   const limit = parseInt(searchParams.get("limit") || "20");
 
-  const where: Prisma.ExpenseWhereInput = { userId };
+  const where: Prisma.ExpenseWhereInput = {};
+
+  if (spaceId && spaceId !== "personal") {
+    // Shared space: verify membership, show ALL members' expenses
+    const isMember = await isSpaceMember(spaceId, userId);
+    if (!isMember) {
+      return NextResponse.json({ error: "No eres miembro de este espacio" }, { status: 403 });
+    }
+    where.spaceId = spaceId;
+  } else if (spaceId === "personal") {
+    where.userId = userId;
+    where.spaceId = null;
+  } else {
+    // No spaceId (all tab): only user's own expenses
+    where.userId = userId;
+  }
 
   if (categoryId) where.categoryId = categoryId;
-  if (spaceId) {
-    if (spaceId === "personal") {
-      where.spaceId = null;
-    } else {
-      where.spaceId = spaceId;
-    }
-  }
   if (dateFrom) where.createdAt = { ...((where.createdAt as Prisma.DateTimeFilter) || {}), gte: new Date(dateFrom) };
   if (dateTo) where.createdAt = { ...((where.createdAt as Prisma.DateTimeFilter) || {}), lte: new Date(dateTo) };
   if (search) where.merchant = { contains: search, mode: "insensitive" };

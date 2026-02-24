@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isSpaceMember } from "@/lib/space-auth";
 
 export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
   const { searchParams } = new URL(req.url);
@@ -30,14 +31,24 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
 
   // Build where clause
   const where: Record<string, unknown> = {
-    userId,
     createdAt: { gte: dateFrom },
   };
-  if (spaceId === "personal") {
-    where.spaceId = null;
-  } else if (spaceId && spaceId !== "all") {
+
+  if (spaceId && spaceId !== "personal" && spaceId !== "all") {
+    // Shared space: verify membership, show ALL members' expenses
+    const isMember = await isSpaceMember(spaceId, userId);
+    if (!isMember) {
+      return NextResponse.json({ error: "No eres miembro de este espacio" }, { status: 403 });
+    }
     where.spaceId = spaceId;
+  } else if (spaceId === "personal") {
+    where.userId = userId;
+    where.spaceId = null;
+  } else {
+    // No spaceId or "all": only user's own expenses
+    where.userId = userId;
   }
+
   if (categoryId) where.categoryId = categoryId;
 
   const expenses = await prisma.expense.findMany({

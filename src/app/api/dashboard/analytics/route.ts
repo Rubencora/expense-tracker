@@ -1,23 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isSpaceMember } from "@/lib/space-auth";
 
-export const GET = authMiddleware(async (_req: NextRequest, { userId }) => {
+export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
+  const { searchParams } = new URL(req.url);
+  const spaceId = searchParams.get("spaceId");
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
+  // Build base filter for space/personal context
+  const baseWhere: Record<string, unknown> = {};
+  if (spaceId && spaceId !== "personal" && spaceId !== "all") {
+    const isMember = await isSpaceMember(spaceId, userId);
+    if (!isMember) {
+      return NextResponse.json({ error: "No eres miembro de este espacio" }, { status: 403 });
+    }
+    baseWhere.spaceId = spaceId;
+  } else if (spaceId === "personal") {
+    baseWhere.userId = userId;
+    baseWhere.spaceId = null;
+  } else {
+    baseWhere.userId = userId;
+  }
+
   // Current month expenses
   const currentMonthExpenses = await prisma.expense.findMany({
-    where: { userId, createdAt: { gte: startOfMonth } },
+    where: { ...baseWhere, createdAt: { gte: startOfMonth } },
     include: { category: { select: { id: true, name: true, emoji: true, color: true } } },
   });
 
   // Last month expenses
   const lastMonthExpenses = await prisma.expense.findMany({
     where: {
-      userId,
+      ...baseWhere,
       createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
     },
     include: { category: { select: { id: true, name: true, emoji: true, color: true } } },
@@ -101,7 +120,7 @@ export const GET = authMiddleware(async (_req: NextRequest, { userId }) => {
   eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
 
   const recentExpenses = await prisma.expense.findMany({
-    where: { userId, createdAt: { gte: eightWeeksAgo } },
+    where: { ...baseWhere, createdAt: { gte: eightWeeksAgo } },
     select: { amountUsd: true, createdAt: true },
   });
 
