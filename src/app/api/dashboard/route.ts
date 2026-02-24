@@ -51,10 +51,13 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
 
   if (categoryId) where.categoryId = categoryId;
 
+  const isSharedSpace = spaceId && spaceId !== "personal" && spaceId !== "all";
+
   const expenses = await prisma.expense.findMany({
     where,
     include: {
       category: { select: { id: true, name: true, emoji: true, color: true } },
+      ...(isSharedSpace ? { user: { select: { id: true, name: true } } } : {}),
     },
     orderBy: { createdAt: "desc" },
   });
@@ -102,6 +105,26 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
 
   const topCategory = categoryDistribution[0] || null;
 
+  // User distribution (shared spaces only)
+  let userDistribution: { id: string; name: string; total: number; count: number }[] = [];
+  if (isSharedSpace) {
+    const userMap = new Map<string, { id: string; name: string; total: number; count: number }>();
+    for (const e of expenses) {
+      const u = (e as unknown as { user: { id: string; name: string } }).user;
+      if (!u) continue;
+      const existing = userMap.get(u.id);
+      if (existing) {
+        existing.total += e.amountUsd;
+        existing.count += 1;
+      } else {
+        userMap.set(u.id, { id: u.id, name: u.name, total: e.amountUsd, count: 1 });
+      }
+    }
+    userDistribution = Array.from(userMap.values())
+      .map((u) => ({ ...u, total: Math.round(u.total * 100) / 100 }))
+      .sort((a, b) => b.total - a.total);
+  }
+
   // Daily trend
   const dailyMap = new Map<string, number>();
   for (const e of expenses) {
@@ -123,5 +146,6 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
     topCategory,
     categoryDistribution,
     dailyTrend,
+    ...(isSharedSpace ? { userDistribution } : {}),
   });
 });

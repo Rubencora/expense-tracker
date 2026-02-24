@@ -141,14 +141,18 @@ export default function GastosPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const expenseData: Record<string, unknown> = {
+        merchant: newMerchant,
+        amount: parseFloat(newAmount),
+        currency: newCurrency,
+        categoryId: newCategoryId,
+      };
+      if (selectedSpace && selectedSpace !== "all" && selectedSpace !== "personal") {
+        expenseData.spaceId = selectedSpace;
+      }
       await apiClient<Expense>("/api/expenses", {
         method: "POST",
-        body: JSON.stringify({
-          merchant: newMerchant,
-          amount: parseFloat(newAmount),
-          currency: newCurrency,
-          categoryId: newCategoryId,
-        }),
+        body: JSON.stringify(expenseData),
       });
       toast.success("Gasto registrado");
       setShowAddDialog(false);

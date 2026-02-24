@@ -22,7 +22,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { DollarSign, TrendingUp, ArrowUpRight, Star } from "lucide-react";
+import { DollarSign, TrendingUp, ArrowUpRight, Star, Users } from "lucide-react";
 
 interface DashboardData {
   totalUsd: number;
@@ -47,6 +47,7 @@ interface DashboardData {
     count: number;
   }[];
   dailyTrend: { date: string; total: number }[];
+  userDistribution?: { id: string; name: string; total: number; count: number }[];
 }
 
 interface SpaceInfo {
@@ -55,6 +56,7 @@ interface SpaceInfo {
 }
 
 const CHART_COLORS = ["#10B981", "#3B82F6", "#F59E0B", "#8B5CF6", "#EF4444", "#EC4899", "#14B8A6", "#F97316", "#6366F1"];
+const USER_COLORS = ["#8B5CF6", "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#EC4899", "#14B8A6", "#F97316"];
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -178,6 +180,46 @@ export default function DashboardPage() {
                   <Bar dataKey="total" fill="#10B981" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Distribution (shared spaces only) */}
+      {data.userDistribution && data.userDistribution.length > 0 && (
+        <div className="glass-card rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-4 w-4 text-purple-400" />
+            <h3 className="text-sm font-semibold text-text-primary">Gastos por miembro</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={data.userDistribution} dataKey="total" nameKey="name" cx="50%" cy="50%" outerRadius={80} innerRadius={40} strokeWidth={0}
+                    label={(props) => `${props.name ?? ""} ${((props.percent ?? 0) * 100).toFixed(0)}%`}>
+                    {data.userDistribution.map((entry, index) => (
+                      <Cell key={entry.id} fill={USER_COLORS[index % USER_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `$${Number(value ?? 0).toFixed(2)} USD`}
+                    contentStyle={{ background: "rgba(20,23,32,0.95)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", color: "#F1F3F7", fontSize: "13px" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-col justify-center space-y-3">
+              {data.userDistribution.map((user, index) => (
+                <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-surface-raised/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: USER_COLORS[index % USER_COLORS.length] }} />
+                    <span className="text-sm font-medium text-text-primary">{user.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold font-numbers text-text-primary">${user.total.toFixed(2)}</p>
+                    <p className="text-xs text-text-muted">{user.count} gastos</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
