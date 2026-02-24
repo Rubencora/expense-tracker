@@ -25,7 +25,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { DollarSign, TrendingUp, ArrowUpRight, Star, Users, Wallet, CalendarCheck } from "lucide-react";
+import { DollarSign, TrendingUp, ArrowUpRight, Star, Users, Wallet, CalendarCheck, Target, PiggyBank } from "lucide-react";
+import Link from "next/link";
 
 interface DashboardData {
   totalUsd: number;
@@ -65,6 +66,25 @@ interface CashFlowData {
   monthlyHistory: { month: string; income: number; expenses: number; balance: number }[];
 }
 
+interface AvailableToSpendData {
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  monthlySavings: number;
+  totalSavingsCommitted: number;
+  availableToSpend: number;
+  daysRemaining: number;
+  dailyBudget: number;
+  activeGoals: {
+    id: string;
+    name: string;
+    icon: string;
+    targetAmountUsd: number;
+    currentAmountUsd: number;
+    isCompleted: boolean;
+    deadline: string | null;
+  }[];
+}
+
 interface SpaceInfo {
   id: string;
   name: string;
@@ -84,6 +104,7 @@ const TOOLTIP_STYLE = {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [cashFlow, setCashFlow] = useState<CashFlowData | null>(null);
+  const [availableData, setAvailableData] = useState<AvailableToSpendData | null>(null);
   const [loading, setLoading] = useState(true);
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);
   const [selectedSpace, setSelectedSpace] = useState("all");
@@ -96,12 +117,14 @@ export default function DashboardPage() {
       if (selectedSpace !== "all") params.set("spaceId", selectedSpace);
       params.set("period", period);
 
-      const [dashResult, cfResult] = await Promise.all([
+      const [dashResult, cfResult, atsResult] = await Promise.all([
         apiClient<DashboardData>(`/api/dashboard?${params.toString()}`),
         apiClient<CashFlowData>("/api/cashflow"),
+        apiClient<AvailableToSpendData>("/api/available-to-spend").catch(() => null),
       ]);
       setData(dashResult);
       setCashFlow(cfResult);
+      setAvailableData(atsResult);
     } catch (err) {
       console.error("Error fetching dashboard:", err);
     } finally {
@@ -235,6 +258,76 @@ export default function DashboardPage() {
                 {(cashFlow.lastMonthRatio * 100).toFixed(0)}% de ingresos
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Available to Spend / Savings Goals */}
+      {availableData && (availableData.activeGoals.length > 0 || availableData.monthlySavings > 0) && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">En mi bolsillo</h2>
+            <Link href="/metas" className="text-xs text-brand hover:text-brand-dark transition-colors">
+              Ver metas
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 stagger-children">
+            <div className="glass-card rounded-2xl p-5 md:col-span-1">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 rounded-lg text-brand bg-brand/10">
+                  <Wallet className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Disponible</span>
+              </div>
+              <p className={`text-2xl font-bold font-numbers ${availableData.availableToSpend >= 0 ? "text-brand" : "text-red-accent"}`}>
+                ${availableData.availableToSpend.toFixed(2)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">USD</span>
+              </p>
+              <p className="text-xs text-text-muted mt-1">
+                ${availableData.dailyBudget.toFixed(2)}/dia · {availableData.daysRemaining}d restantes
+              </p>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 rounded-lg text-purple-400 bg-purple-400/10">
+                  <PiggyBank className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Ahorrado</span>
+              </div>
+              <p className="text-2xl font-bold font-numbers text-text-primary">
+                ${availableData.monthlySavings.toFixed(2)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">este mes</span>
+              </p>
+              <p className="text-xs text-text-muted mt-1">
+                ${availableData.totalSavingsCommitted.toFixed(2)} por completar
+              </p>
+            </div>
+
+            {/* Mini goal cards */}
+            {availableData.activeGoals.slice(0, 3).map((goal) => {
+              const progress = goal.targetAmountUsd > 0
+                ? Math.min((goal.currentAmountUsd / goal.targetAmountUsd) * 100, 100)
+                : 0;
+              return (
+                <Link key={goal.id} href="/metas" className="glass-card glass-card-hover rounded-2xl p-5 block">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-lg">{goal.icon}</span>
+                    <span className="text-xs font-medium text-text-primary truncate">{goal.name}</span>
+                  </div>
+                  <div className="w-full bg-surface-overlay rounded-full h-1.5 mb-2">
+                    <div
+                      className="h-1.5 rounded-full bg-brand transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs font-numbers text-text-muted">
+                    ${goal.currentAmountUsd.toFixed(2)} / ${goal.targetAmountUsd.toFixed(2)}
+                  </p>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}

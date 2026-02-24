@@ -66,6 +66,7 @@ model User {
   splitsOwedBy     ExpenseSplit[]    @relation("SplitOwedBy")
   settlementsFrom  Settlement[]      @relation("SettlementFrom")
   settlementsTo    Settlement[]      @relation("SettlementTo")
+  savingsGoals     SavingsGoal[]
 
   @@map("users")
 }
@@ -233,4 +234,35 @@ model Settlement {
 
   @@index([spaceId])
   @@map("settlements")
+}
+
+model SavingsGoal {
+  id              String               @id @default(cuid())
+  userId          String               @map("user_id")
+  name            String
+  icon            String               @default("🎯")
+  targetAmountUsd Float                @map("target_amount_usd")
+  currentAmountUsd Float               @default(0) @map("current_amount_usd")
+  deadline        DateTime?
+  isCompleted     Boolean              @default(false) @map("is_completed")
+  createdAt       DateTime             @default(now()) @map("created_at")
+
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contributions SavingsContribution[]
+
+  @@index([userId])
+  @@map("savings_goals")
+}
+
+model SavingsContribution {
+  id           String      @id @default(cuid())
+  goalId       String      @map("goal_id")
+  amountUsd    Float       @map("amount_usd")
+  note         String?
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  goal SavingsGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+  @@map("savings_contributions")
 }
