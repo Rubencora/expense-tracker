@@ -25,8 +25,10 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { DollarSign, TrendingUp, ArrowUpRight, Star, Users, Wallet, CalendarCheck, Target, PiggyBank } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DollarSign, TrendingUp, ArrowUpRight, Star, Users, Wallet, CalendarCheck, Target, PiggyBank, Sparkles, FileText, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 interface DashboardData {
   totalUsd: number;
@@ -105,6 +107,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [cashFlow, setCashFlow] = useState<CashFlowData | null>(null);
   const [availableData, setAvailableData] = useState<AvailableToSpendData | null>(null);
+  const [insights, setInsights] = useState<string[]>([]);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);
   const [selectedSpace, setSelectedSpace] = useState("all");
@@ -125,6 +129,8 @@ export default function DashboardPage() {
       setData(dashResult);
       setCashFlow(cfResult);
       setAvailableData(atsResult);
+      // Fetch insights (non-blocking)
+      apiClient<{ insights: string[] }>("/api/insights").then((r) => setInsights(r.insights)).catch(() => {});
     } catch (err) {
       console.error("Error fetching dashboard:", err);
     } finally {
@@ -142,6 +148,74 @@ export default function DashboardPage() {
     fetchDashboard();
   }, [fetchDashboard]);
 
+  const handleExportPdf = async () => {
+    setPdfLoading(true);
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+      const doc = new jsPDF();
+      const now = new Date();
+      const monthLabel = now.toLocaleDateString("es-CO", { month: "long", year: "numeric" });
+
+      doc.setFontSize(18);
+      doc.text("Reporte Financiero", 14, 22);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(monthLabel, 14, 30);
+
+      let y = 40;
+      if (cashFlow) {
+        doc.setFontSize(13);
+        doc.setTextColor(0);
+        doc.text("Resumen", 14, y);
+        y += 8;
+        doc.setFontSize(10);
+        doc.setTextColor(60);
+        doc.text(`Ingresos mensuales: $${cashFlow.monthlyIncome.toFixed(2)} USD`, 14, y); y += 6;
+        doc.text(`Gastos este mes: $${cashFlow.monthlyExpenses.toFixed(2)} USD`, 14, y); y += 6;
+        doc.text(`Balance: $${cashFlow.balance.toFixed(2)} USD`, 14, y); y += 6;
+        doc.text(`Tasa de ahorro: ${cashFlow.savingsRate.toFixed(0)}%`, 14, y); y += 10;
+      }
+
+      if (data && data.categoryDistribution.length > 0) {
+        doc.setFontSize(13);
+        doc.setTextColor(0);
+        doc.text("Gastos por Categoria", 14, y);
+        y += 4;
+        autoTable(doc, {
+          startY: y,
+          head: [["Categoria", "Total USD", "Gastos"]],
+          body: data.categoryDistribution.map((c) => [`${c.emoji} ${c.name}`, `$${c.total.toFixed(2)}`, String(c.count)]),
+          theme: "grid",
+          headStyles: { fillColor: [16, 185, 129] },
+        });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+      }
+
+      if (insights.length > 0) {
+        doc.setFontSize(13);
+        doc.setTextColor(0);
+        doc.text("Insights", 14, y);
+        y += 8;
+        doc.setFontSize(10);
+        doc.setTextColor(60);
+        insights.forEach((insight) => {
+          const lines = doc.splitTextToSize(`• ${insight}`, 180);
+          doc.text(lines, 14, y);
+          y += lines.length * 5 + 3;
+        });
+      }
+
+      doc.save(`reporte-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}.pdf`);
+      toast.success("PDF descargado");
+    } catch (err) {
+      console.error("PDF export error:", err);
+      toast.error("Error al generar PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   if (loading) return <DashboardSkeleton />;
 
   if (!data) {
@@ -154,9 +228,21 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary tracking-tight">Dashboard</h1>
-        <p className="text-sm text-text-muted mt-1">Resumen de tus finanzas</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Dashboard</h1>
+          <p className="text-sm text-text-muted mt-1">Resumen de tus finanzas</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportPdf}
+          disabled={pdfLoading}
+          className="border-brand/20 text-brand hover:bg-brand/10"
+        >
+          {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
+          PDF
+        </Button>
       </div>
 
       {/* Filters */}
@@ -258,6 +344,26 @@ export default function DashboardPage() {
                 {(cashFlow.lastMonthRatio * 100).toFixed(0)}% de ingresos
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Insights */}
+      {insights.length > 0 && (
+        <div className="glass-card rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-1.5 rounded-lg text-purple-400 bg-purple-400/10">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <h3 className="text-sm font-semibold text-text-primary">Insights</h3>
+          </div>
+          <div className="space-y-2.5">
+            {insights.map((insight, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
+                <p className="text-sm text-text-secondary">{insight}</p>
+              </div>
+            ))}
           </div>
         </div>
       )}

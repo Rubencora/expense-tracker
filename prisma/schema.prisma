@@ -67,6 +67,8 @@ model User {
   settlementsFrom  Settlement[]      @relation("SettlementFrom")
   settlementsTo    Settlement[]      @relation("SettlementTo")
   savingsGoals     SavingsGoal[]
+  tags             Tag[]
+  webhooks         Webhook[]
 
   @@map("users")
 }
@@ -109,6 +111,7 @@ model Expense {
   space    Space?         @relation(fields: [spaceId], references: [id], onDelete: SetNull)
   category Category       @relation(fields: [categoryId], references: [id])
   splits   ExpenseSplit[]
+  tags     ExpenseTag[]
 
   @@index([userId, createdAt])
   @@index([spaceId])
@@ -265,4 +268,47 @@ model SavingsContribution {
 
   @@index([goalId])
   @@map("savings_contributions")
+}
+
+model Tag {
+  id        String       @id @default(cuid())
+  userId    String       @map("user_id")
+  name      String
+  color     String       @default("#6366F1")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses ExpenseTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("tags")
+}
+
+model ExpenseTag {
+  id        String   @id @default(cuid())
+  expenseId String   @map("expense_id")
+  tagId     String   @map("tag_id")
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, tagId])
+  @@index([tagId])
+  @@map("expense_tags")
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String
+  url       String
+  isActive  Boolean  @default(true) @map("is_active")
+  secret    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("webhooks")
 }

@@ -13,6 +13,7 @@ import {
   LogOut,
   Banknote,
   Target,
+  MessageSquare,
 } from "lucide-react";
 import OnboardingModal from "@/components/onboarding/OnboardingModal";
 
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/gastos", label: "Gastos", icon: Receipt },
   { href: "/ingresos", label: "Ingresos", icon: Banknote },
   { href: "/metas", label: "Metas", icon: Target },
+  { href: "/chat", label: "Chat IA", icon: MessageSquare },
   { href: "/categorias", label: "Categorias", icon: Tags },
   { href: "/espacios", label: "Espacios", icon: Users },
   { href: "/configuracion", label: "Config", icon: Settings },

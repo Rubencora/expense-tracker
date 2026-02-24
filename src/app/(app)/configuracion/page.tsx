@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Copy, RefreshCw, Check, Smartphone, Eye, EyeOff, MessageCircle, Unlink, Loader2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Copy, RefreshCw, Check, Smartphone, Eye, EyeOff, MessageCircle, Unlink, Loader2, Webhook, Plus, Trash2 } from "lucide-react";
 
 interface UserProfile {
   id: string;
@@ -25,6 +26,15 @@ interface UserProfile {
   defaultCurrency: string;
   timezone: string;
   onboardingCompleted: boolean;
+}
+
+interface WebhookItem {
+  id: string;
+  name: string;
+  url: string;
+  isActive: boolean;
+  secret: string | null;
+  createdAt: string;
 }
 
 const TIMEZONES = [
@@ -40,6 +50,11 @@ export default function ConfiguracionPage() {
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linkCodeLoading, setLinkCodeLoading] = useState(false);
   const [unlinkLoading, setUnlinkLoading] = useState(false);
+  const [webhooks, setWebhooks] = useState<WebhookItem[]>([]);
+  const [webhookName, setWebhookName] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [webhookAdding, setWebhookAdding] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -53,7 +68,14 @@ export default function ConfiguracionPage() {
     }
   }, []);
 
-  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+  const fetchWebhooks = useCallback(async () => {
+    try {
+      const result = await apiClient<{ webhooks: WebhookItem[] }>("/api/webhooks");
+      setWebhooks(result.webhooks);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchProfile(); fetchWebhooks(); }, [fetchProfile, fetchWebhooks]);
 
   const handleSaveName = async () => {
     try {
@@ -101,6 +123,44 @@ export default function ConfiguracionPage() {
       toast.success("Codigo generado. Tienes 10 minutos para usarlo.");
     } catch { toast.error("Error al generar el codigo"); }
     finally { setLinkCodeLoading(false); }
+  };
+
+  const handleAddWebhook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setWebhookAdding(true);
+    try {
+      await apiClient("/api/webhooks", {
+        method: "POST",
+        body: JSON.stringify({ name: webhookName, url: webhookUrl, secret: webhookSecret || null }),
+      });
+      toast.success("Webhook creado");
+      setWebhookName("");
+      setWebhookUrl("");
+      setWebhookSecret("");
+      fetchWebhooks();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al crear webhook");
+    } finally {
+      setWebhookAdding(false);
+    }
+  };
+
+  const handleToggleWebhook = async (wh: WebhookItem) => {
+    try {
+      await apiClient(`/api/webhooks/${wh.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !wh.isActive }),
+      });
+      setWebhooks((prev) => prev.map((w) => w.id === wh.id ? { ...w, isActive: !w.isActive } : w));
+    } catch { toast.error("Error al actualizar webhook"); }
+  };
+
+  const handleDeleteWebhook = async (id: string) => {
+    try {
+      await apiClient(`/api/webhooks/${id}`, { method: "DELETE" });
+      setWebhooks((prev) => prev.filter((w) => w.id !== id));
+      toast.success("Webhook eliminado");
+    } catch { toast.error("Error al eliminar webhook"); }
   };
 
   const handleUnlinkTelegram = async () => {
@@ -259,6 +319,56 @@ export default function ConfiguracionPage() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* Webhooks */}
+      <div className="glass-card rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-amber-accent/10 rounded-xl">
+            <Webhook className="h-4 w-4 text-amber-accent" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">Webhooks</h3>
+            <p className="text-xs text-text-muted">Recibe notificaciones cuando se registre un gasto</p>
+          </div>
+        </div>
+
+        {webhooks.length > 0 && (
+          <div className="space-y-2">
+            {webhooks.map((wh) => (
+              <div key={wh.id} className="flex items-center justify-between p-3 rounded-xl bg-surface-raised/50">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-text-primary truncate">{wh.name}</p>
+                  <p className="text-xs text-text-muted font-mono truncate">{wh.url}</p>
+                </div>
+                <div className="flex items-center gap-2 ml-3 shrink-0">
+                  <Switch checked={wh.isActive} onCheckedChange={() => handleToggleWebhook(wh)} className="scale-75" />
+                  <button onClick={() => handleDeleteWebhook(wh.id)}
+                    className="p-1.5 rounded-lg text-text-muted hover:text-red-accent hover:bg-red-accent/10 transition-all">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleAddWebhook} className="space-y-3 pt-2 border-t border-border-subtle">
+          <div className="grid grid-cols-2 gap-2">
+            <Input value={webhookName} onChange={(e) => setWebhookName(e.target.value)} placeholder="Nombre" required
+              className="bg-surface-raised/50 border-border-subtle h-9 rounded-xl text-sm" />
+            <Input value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://..." type="url" required
+              className="bg-surface-raised/50 border-border-subtle h-9 rounded-xl text-sm font-mono" />
+          </div>
+          <div className="flex gap-2">
+            <Input value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="Secret (opcional)"
+              className="bg-surface-raised/50 border-border-subtle h-9 rounded-xl text-sm font-mono" />
+            <Button type="submit" size="sm" disabled={webhookAdding}
+              className="bg-brand hover:bg-brand-dark text-white shrink-0 h-9">
+              {webhookAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+        </form>
       </div>
 
       {/* iOS Shortcut Guide */}

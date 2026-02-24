@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { convertToUSD } from "@/lib/currency";
 import { Prisma } from "@/generated/prisma/client";
 import { isSpaceMember } from "@/lib/space-auth";
+import { triggerWebhooks } from "@/lib/webhook-trigger";
 
 const splitShareSchema = z.object({
   userId: z.string(),
@@ -183,6 +184,16 @@ export const POST = authMiddleware(async (req, { userId }) => {
         }
       }
     }
+
+    // Fire webhooks (fire-and-forget)
+    triggerWebhooks(userId, "expense.created", {
+      id: expense.id,
+      merchant: expense.merchant,
+      amount: expense.amount,
+      currency: expense.currency,
+      amountUsd: expense.amountUsd,
+      category: expense.category,
+    });
 
     return NextResponse.json(expense, { status: 201 });
   } catch (error) {

@@ -48,6 +48,13 @@ interface Expense {
   user: { id: string; name: string };
 }
 
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+  expenseCount: number;
+}
+
 interface SpaceInfo {
   id: string;
   name: string;
@@ -78,6 +85,9 @@ export default function GastosPage() {
   const [selectedSpace, setSelectedSpace] = useState("all");
   const [period, setPeriod] = useState("month");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [selectedTag, setSelectedTag] = useState("all");
+  const [newExpenseTags, setNewExpenseTags] = useState<string[]>([]);
 
   const [newMerchant, setNewMerchant] = useState("");
   const [newAmount, setNewAmount] = useState("");
@@ -145,6 +155,7 @@ export default function GastosPage() {
     apiClient<{ spaces: SpaceInfo[] }>("/api/spaces").then((res) =>
       setSpaces(res.spaces)
     );
+    apiClient<Tag[]>("/api/tags").then(setTags);
   }, []);
 
   useEffect(() => {
@@ -211,15 +222,29 @@ export default function GastosPage() {
         }
       }
 
-      await apiClient<Expense>("/api/expenses", {
+      const created = await apiClient<Expense>("/api/expenses", {
         method: "POST",
         body: JSON.stringify(expenseData),
       });
+
+      // Assign tags to the new expense
+      if (newExpenseTags.length > 0) {
+        await Promise.all(
+          newExpenseTags.map(tagId =>
+            apiClient(`/api/expenses/${created.id}/tags`, {
+              method: "POST",
+              body: JSON.stringify({ tagId }),
+            })
+          )
+        );
+      }
+
       toast.success("Gasto registrado");
       setShowAddDialog(false);
       setNewMerchant("");
       setNewAmount("");
       setNewCategoryId("");
+      setNewExpenseTags([]);
       setSplitType("equal");
       fetchExpenses();
     } catch (err) {
@@ -304,7 +329,10 @@ export default function GastosPage() {
           </Button>
           <Dialog open={showAddDialog} onOpenChange={(open) => {
             setShowAddDialog(open);
-            if (!open) setSplitType("equal");
+            if (!open) {
+              setSplitType("equal");
+              setNewExpenseTags([]);
+            }
           }}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-brand hover:bg-brand-dark text-white">
@@ -354,6 +382,23 @@ export default function GastosPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {tags.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-text-secondary text-xs uppercase tracking-wider">Etiquetas</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tags.map(t => (
+                        <button key={t.id} type="button"
+                          onClick={() => setNewExpenseTags(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                            newExpenseTags.includes(t.id) ? "border-brand/30 bg-brand/10 text-brand" : "border-border-subtle bg-surface-raised/50 text-text-muted hover:border-border-subtle/80"
+                          }`}>
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Split Section - only for shared spaces */}
                 {isSharedSpace && spaceMembers.length > 1 && (
@@ -503,6 +548,16 @@ export default function GastosPage() {
             <SelectItem value="week">Esta semana</SelectItem>
             <SelectItem value="month">Este mes</SelectItem>
             <SelectItem value="all">Todo</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={selectedTag} onValueChange={setSelectedTag}>
+          <SelectTrigger className="w-36 bg-surface-raised border-border-subtle">
+            <SelectValue placeholder="Etiqueta" />
+          </SelectTrigger>
+          <SelectContent className="bg-surface-overlay border-border-subtle">
+            <SelectItem value="all">Todas</SelectItem>
+            {tags.map(t => <SelectItem key={t.id} value={t.id}>{"\uD83C\uDFF7\uFE0F"} {t.name}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
