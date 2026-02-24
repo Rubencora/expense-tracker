@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ExpenseSource {
+  WEB
+  TELEGRAM
+  SHORTCUT
+}
+
+enum SpaceRole {
+  OWNER
+  MEMBER
+}
+
+model User {
+  id                   String        @id @default(cuid())
+  email                String        @unique
+  name                 String
+  passwordHash         String        @map("password_hash")
+  apiToken             String        @unique @default(cuid()) @map("api_token")
+  telegramChatId       String?       @map("telegram_chat_id")
+  telegramLinkCode     String?       @map("telegram_link_code")
+  telegramLinkCodeExp  DateTime?     @map("telegram_link_code_exp")
+  defaultCurrency      String        @default("COP") @map("default_currency")
+  timezone             String        @default("America/Bogota")
+  defaultSpaceId       String?       @map("default_space_id")
+  onboardingCompleted  Boolean       @default(false) @map("onboarding_completed")
+  createdAt            DateTime      @default(now()) @map("created_at")
+
+  categories    Category[]
+  expenses      Expense[]
+  spaceMemberships SpaceMember[]
+  spacesCreated Space[]       @relation("SpaceCreator")
+  budgets       Budget[]
+  defaultSpace  Space?        @relation("DefaultSpace", fields: [defaultSpaceId], references: [id])
+
+  @@map("users")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String
+  emoji     String
+  color     String
+  isDefault Boolean  @default(false) @map("is_default")
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+  budgets  Budget[]
+
+  @@index([userId])
+  @@map("categories")
+}
+
+model Expense {
+  id            String        @id @default(cuid())
+  userId        String        @map("user_id")
+  spaceId       String?       @map("space_id")
+  categoryId    String        @map("category_id")
+  merchant      String
+  amount        Float
+  currency      String
+  amountUsd     Float         @map("amount_usd")
+  descriptionAi String?       @map("description_ai")
+  source        ExpenseSource @default(WEB)
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space    Space?    @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  category Category  @relation(fields: [categoryId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([spaceId])
+  @@map("expenses")
+}
+
+model Space {
+  id         String   @id @default(cuid())
+  name       String
+  createdBy  String   @map("created_by")
+  inviteCode String   @unique @default(cuid()) @map("invite_code")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  creator         User          @relation("SpaceCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  members         SpaceMember[]
+  expenses        Expense[]
+  defaultForUsers User[]        @relation("DefaultSpace")
+
+  @@map("spaces")
+}
+
+model SpaceMember {
+  id       String    @id @default(cuid())
+  spaceId  String    @map("space_id")
+  userId   String    @map("user_id")
+  role     SpaceRole @default(MEMBER)
+  joinedAt DateTime  @default(now()) @map("joined_at")
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+  @@map("space_members")
+}
+
+model Budget {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  categoryId     String   @map("category_id")
+  monthlyLimitUsd Float   @map("monthly_limit_usd")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@map("budgets")
+}
