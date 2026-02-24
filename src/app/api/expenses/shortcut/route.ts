@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { authenticateByApiToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseCurrency, convertToUSD } from "@/lib/currency";
 import { classifyExpense } from "@/lib/ai/classify";
-
-const shortcutSchema = z.object({
-  merchant: z.string().min(1, "Comercio requerido"),
-  amount: z.union([z.number(), z.string()]),
-  currency: z.enum(["COP", "USD"]).optional(),
-});
 
 // Simple in-memory rate limiting
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -47,31 +40,58 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    const parsed = shortcutSchema.safeParse(body);
-
-    if (!parsed.success) {
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
       return NextResponse.json(
-        { error: "Datos invalidos", details: parsed.error.flatten() },
+        { error: "JSON invalido en el body" },
         { status: 400 }
       );
     }
 
-    const { merchant } = parsed.data;
+    // Log raw body for debugging iOS Shortcuts format
+    console.log("Shortcut raw body:", JSON.stringify(body));
+
+    // Lenient extraction - iOS Shortcuts may send keys in various cases/formats
+    const merchant = String(body.merchant || body.Merchant || body.MERCHANT || "").trim();
+    const rawAmount = body.amount ?? body.Amount ?? body.AMOUNT;
+    const rawCurrency = body.currency || body.Currency || body.CURRENCY;
+
+    if (!merchant) {
+      return NextResponse.json(
+        { error: "Datos invalidos", details: "merchant es requerido" },
+        { status: 400 }
+      );
+    }
+
+    if (rawAmount === undefined || rawAmount === null || rawAmount === "") {
+      return NextResponse.json(
+        { error: "Datos invalidos", details: "amount es requerido" },
+        { status: 400 }
+      );
+    }
+
     let amount: number;
     let currency: "COP" | "USD";
 
-    // Parse amount and currency
-    if (parsed.data.currency) {
-      amount = typeof parsed.data.amount === "string"
-        ? parseFloat(parsed.data.amount)
-        : parsed.data.amount;
-      currency = parsed.data.currency;
+    // Parse amount and currency - handle any type iOS may send
+    const currencyUpper = rawCurrency ? String(rawCurrency).toUpperCase().trim() : null;
+    if (currencyUpper === "COP" || currencyUpper === "USD") {
+      amount = typeof rawAmount === "number" ? rawAmount : parseFloat(String(rawAmount).replace(/[^0-9.\-]/g, ""));
+      currency = currencyUpper;
     } else {
-      const amountStr = String(parsed.data.amount);
+      const amountStr = String(rawAmount).replace(/[^0-9.\-]/g, "");
       const parsedCurrency = parseCurrency(amountStr);
       amount = parsedCurrency.amount;
       currency = parsedCurrency.currency;
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      return NextResponse.json(
+        { error: "Datos invalidos", details: `amount invalido: ${String(rawAmount)}` },
+        { status: 400 }
+      );
     }
 
     // Get user's categories and default space
