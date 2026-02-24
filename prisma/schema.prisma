@@ -24,6 +24,14 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum IncomeFrequency {
+  ONCE
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  YEARLY
+}
+
 model User {
   id                   String        @id @default(cuid())
   email                String        @unique
@@ -46,6 +54,7 @@ model User {
   budgets          Budget[]
   defaultSpace     Space?            @relation("DefaultSpace", fields: [defaultSpaceId], references: [id], onDelete: SetNull)
   sentInvitations  SpaceInvitation[] @relation("InvitedBy")
+  incomes          Income[]
 
   @@map("users")
 }
@@ -103,6 +112,7 @@ model Space {
   expenses        Expense[]
   defaultForUsers User[]            @relation("DefaultSpace")
   invitations     SpaceInvitation[]
+  incomes         Income[]
 
   @@map("spaces")
 }
@@ -150,4 +160,25 @@ model SpaceInvitation {
 
   @@index([email])
   @@map("space_invitations")
+}
+
+model Income {
+  id        String          @id @default(cuid())
+  userId    String          @map("user_id")
+  name      String
+  amount    Float
+  currency  String
+  amountUsd Float           @map("amount_usd")
+  frequency IncomeFrequency @default(MONTHLY)
+  isActive  Boolean         @default(true) @map("is_active")
+  nextDate  DateTime?       @map("next_date")
+  spaceId   String?         @map("space_id")
+  notes     String?
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space Space? @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("incomes")
 }

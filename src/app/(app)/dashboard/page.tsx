@@ -17,12 +17,15 @@ import {
   Cell,
   BarChart,
   Bar,
+  ComposedChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from "recharts";
-import { DollarSign, TrendingUp, ArrowUpRight, Star, Users } from "lucide-react";
+import { DollarSign, TrendingUp, ArrowUpRight, Star, Users, Wallet, CalendarCheck } from "lucide-react";
 
 interface DashboardData {
   totalUsd: number;
@@ -50,6 +53,18 @@ interface DashboardData {
   userDistribution?: { id: string; name: string; total: number; count: number }[];
 }
 
+interface CashFlowData {
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  balance: number;
+  savingsRate: number;
+  expenseRatio: number;
+  dailyAvailable: number;
+  lastMonthExpenses: number;
+  lastMonthRatio: number;
+  monthlyHistory: { month: string; income: number; expenses: number; balance: number }[];
+}
+
 interface SpaceInfo {
   id: string;
   name: string;
@@ -58,8 +73,17 @@ interface SpaceInfo {
 const CHART_COLORS = ["#10B981", "#3B82F6", "#F59E0B", "#8B5CF6", "#EF4444", "#EC4899", "#14B8A6", "#F97316", "#6366F1"];
 const USER_COLORS = ["#8B5CF6", "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#EC4899", "#14B8A6", "#F97316"];
 
+const TOOLTIP_STYLE = {
+  background: "rgba(20,23,32,0.95)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: "12px",
+  color: "#F1F3F7",
+  fontSize: "13px",
+};
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [cashFlow, setCashFlow] = useState<CashFlowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);
   const [selectedSpace, setSelectedSpace] = useState("all");
@@ -72,10 +96,12 @@ export default function DashboardPage() {
       if (selectedSpace !== "all") params.set("spaceId", selectedSpace);
       params.set("period", period);
 
-      const result = await apiClient<DashboardData>(
-        `/api/dashboard?${params.toString()}`
-      );
-      setData(result);
+      const [dashResult, cfResult] = await Promise.all([
+        apiClient<DashboardData>(`/api/dashboard?${params.toString()}`),
+        apiClient<CashFlowData>("/api/cashflow"),
+      ]);
+      setData(dashResult);
+      setCashFlow(cfResult);
     } catch (err) {
       console.error("Error fetching dashboard:", err);
     } finally {
@@ -107,7 +133,7 @@ export default function DashboardPage() {
     <div className="space-y-8 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-text-primary tracking-tight">Dashboard</h1>
-        <p className="text-sm text-text-muted mt-1">Resumen de tus gastos</p>
+        <p className="text-sm text-text-muted mt-1">Resumen de tus finanzas</p>
       </div>
 
       {/* Filters */}
@@ -137,13 +163,136 @@ export default function DashboardPage() {
         </Select>
       </div>
 
+      {/* Cash Flow Section */}
+      {cashFlow && cashFlow.monthlyIncome > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Flujo de caja</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 stagger-children">
+            <div className="glass-card rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 rounded-lg text-brand bg-brand/10">
+                  <Wallet className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Balance</span>
+              </div>
+              <p className={`text-2xl font-bold font-numbers ${cashFlow.balance >= 0 ? "text-brand" : "text-red-accent"}`}>
+                ${cashFlow.balance.toFixed(2)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">USD</span>
+              </p>
+              <p className="text-xs text-text-muted mt-1">
+                {cashFlow.savingsRate > 0 ? `${cashFlow.savingsRate.toFixed(0)}% ahorro` : "Sin ahorro"}
+              </p>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 rounded-lg text-blue-400 bg-blue-400/10">
+                  <CalendarCheck className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Disponible/dia</span>
+              </div>
+              <p className={`text-2xl font-bold font-numbers ${cashFlow.dailyAvailable >= 0 ? "text-text-primary" : "text-red-accent"}`}>
+                ${cashFlow.dailyAvailable.toFixed(2)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">USD</span>
+              </p>
+              <p className="text-xs text-text-muted mt-1">Resto del mes</p>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 rounded-lg text-brand bg-brand/10">
+                  <TrendingUp className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Ingresos</span>
+              </div>
+              <p className="text-2xl font-bold font-numbers text-text-primary">
+                ${cashFlow.monthlyIncome.toFixed(2)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">USD/mes</span>
+              </p>
+              <div className="mt-2 w-full bg-surface-overlay rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${cashFlow.expenseRatio > 1 ? "bg-red-accent" : cashFlow.expenseRatio > 0.8 ? "bg-amber-accent" : "bg-brand"}`}
+                  style={{ width: `${Math.min(cashFlow.expenseRatio * 100, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-text-muted mt-1">
+                {(cashFlow.expenseRatio * 100).toFixed(0)}% gastado
+              </p>
+            </div>
+
+            <div className="glass-card rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 rounded-lg text-amber-accent bg-amber-accent/10">
+                  <ArrowUpRight className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Mes anterior</span>
+              </div>
+              <p className="text-2xl font-bold font-numbers text-text-primary">
+                ${cashFlow.lastMonthExpenses.toFixed(2)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">USD</span>
+              </p>
+              <p className="text-xs text-text-muted mt-1">
+                {(cashFlow.lastMonthRatio * 100).toFixed(0)}% de ingresos
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 gap-4 stagger-children">
-        <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total gastado" value={`$${data.totalUsd.toFixed(2)}`} unit="USD" detail={`${data.count} gastos`} accent="brand" />
-        <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Promedio diario" value={`$${data.avgDaily.toFixed(2)}`} unit="USD" detail={`${data.daysWithExpenses} dias con gastos`} accent="blue" />
-        <StatCard icon={<ArrowUpRight className="h-4 w-4" />} label="Mayor gasto" value={data.biggestExpense ? `$${data.biggestExpense.amountUsd.toFixed(2)}` : "—"} detail={data.biggestExpense?.merchant || "Sin gastos"} accent="amber" />
-        <StatCard icon={<Star className="h-4 w-4" />} label="Categoria top" value={data.topCategory ? `${data.topCategory.emoji} ${data.topCategory.name}` : "—"} detail={data.topCategory ? `$${data.topCategory.total.toFixed(2)} USD (${data.topCategory.count})` : "Sin datos"} accent="purple" />
+      <div className="space-y-4">
+        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Gastos del periodo</h2>
+        <div className="grid grid-cols-2 gap-4 stagger-children">
+          <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total gastado" value={`$${data.totalUsd.toFixed(2)}`} unit="USD" detail={`${data.count} gastos`} accent="brand" />
+          <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Promedio diario" value={`$${data.avgDaily.toFixed(2)}`} unit="USD" detail={`${data.daysWithExpenses} dias con gastos`} accent="blue" />
+          <StatCard icon={<ArrowUpRight className="h-4 w-4" />} label="Mayor gasto" value={data.biggestExpense ? `$${data.biggestExpense.amountUsd.toFixed(2)}` : "\u2014"} detail={data.biggestExpense?.merchant || "Sin gastos"} accent="amber" />
+          <StatCard icon={<Star className="h-4 w-4" />} label="Categoria top" value={data.topCategory ? `${data.topCategory.emoji} ${data.topCategory.name}` : "\u2014"} detail={data.topCategory ? `$${data.topCategory.total.toFixed(2)} USD (${data.topCategory.count})` : "Sin datos"} accent="purple" />
+        </div>
       </div>
+
+      {/* Income vs Expenses Chart (6 months) */}
+      {cashFlow && cashFlow.monthlyHistory.length > 0 && (
+        <div className="glass-card rounded-2xl p-6">
+          <h3 className="text-sm font-semibold text-text-primary mb-4">Ingresos vs Gastos (6 meses)</h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={cashFlow.monthlyHistory}>
+                <XAxis
+                  dataKey="month"
+                  tickFormatter={(m: string) => {
+                    const [y, mo] = m.split("-");
+                    return new Date(Number(y), Number(mo) - 1).toLocaleDateString("es-CO", { month: "short" });
+                  }}
+                  fontSize={11}
+                  stroke="#5A6178"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis fontSize={11} stroke="#5A6178" tickLine={false} axisLine={false} />
+                <Tooltip
+                  labelFormatter={(m) => {
+                    const [y, mo] = String(m).split("-");
+                    return new Date(Number(y), Number(mo) - 1).toLocaleDateString("es-CO", { month: "long", year: "numeric" });
+                  }}
+                  formatter={(value, name) => [
+                    `$${Number(value ?? 0).toFixed(2)} USD`,
+                    name === "income" ? "Ingresos" : name === "expenses" ? "Gastos" : "Balance",
+                  ]}
+                  contentStyle={TOOLTIP_STYLE}
+                />
+                <Legend
+                  formatter={(value) =>
+                    value === "income" ? "Ingresos" : value === "expenses" ? "Gastos" : "Balance"
+                  }
+                />
+                <Bar dataKey="income" fill="#10B981" radius={[6, 6, 0, 0]} barSize={20} opacity={0.8} />
+                <Bar dataKey="expenses" fill="#EF4444" radius={[6, 6, 0, 0]} barSize={20} opacity={0.8} />
+                <Line dataKey="balance" stroke="#3B82F6" strokeWidth={2} dot={{ r: 4, fill: "#3B82F6" }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Charts */}
       {data.categoryDistribution.length > 0 && (
@@ -160,7 +309,7 @@ export default function DashboardPage() {
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => `$${Number(value ?? 0).toFixed(2)} USD`}
-                    contentStyle={{ background: "rgba(20,23,32,0.95)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", color: "#F1F3F7", fontSize: "13px" }} />
+                    contentStyle={TOOLTIP_STYLE} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -176,7 +325,7 @@ export default function DashboardPage() {
                   <Tooltip
                     labelFormatter={(d) => new Date(String(d) + "T12:00:00").toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" })}
                     formatter={(value) => [`$${Number(value ?? 0).toFixed(2)} USD`, "Total"]}
-                    contentStyle={{ background: "rgba(20,23,32,0.95)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", color: "#F1F3F7", fontSize: "13px" }} />
+                    contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="total" fill="#10B981" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -203,7 +352,7 @@ export default function DashboardPage() {
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => `$${Number(value ?? 0).toFixed(2)} USD`}
-                    contentStyle={{ background: "rgba(20,23,32,0.95)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", color: "#F1F3F7", fontSize: "13px" }} />
+                    contentStyle={TOOLTIP_STYLE} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -270,6 +419,15 @@ function DashboardSkeleton() {
         <Skeleton className="h-8 w-40 bg-surface-raised" />
         <Skeleton className="h-4 w-60 mt-2 bg-surface-raised" />
       </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="glass-card rounded-2xl p-5 space-y-3">
+            <Skeleton className="h-4 w-24 bg-surface-overlay" />
+            <Skeleton className="h-8 w-32 bg-surface-overlay" />
+            <Skeleton className="h-3 w-20 bg-surface-overlay" />
+          </div>
+        ))}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="glass-card rounded-2xl p-5 space-y-3">
@@ -279,6 +437,7 @@ function DashboardSkeleton() {
           </div>
         ))}
       </div>
+      <Skeleton className="h-80 rounded-2xl bg-surface-raised" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Skeleton className="h-80 rounded-2xl bg-surface-raised" />
         <Skeleton className="h-80 rounded-2xl bg-surface-raised" />
