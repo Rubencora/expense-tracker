@@ -11,9 +11,9 @@ const createIncomeSchema = z.object({
   currency: z.enum(["COP", "USD"]),
   frequency: z.enum(["ONCE", "WEEKLY", "BIWEEKLY", "MONTHLY", "YEARLY"]),
   isActive: z.boolean().optional().default(true),
-  nextDate: z.string().optional(),
-  spaceId: z.string().optional(),
-  notes: z.string().optional(),
+  nextDate: z.string().nullable().optional(),
+  spaceId: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 export const GET = authMiddleware(async (req, { userId }) => {
