@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,13 @@ import { toast } from "sonner";
 import { ArrowRight, Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
+  return <Suspense><RegisterForm /></Suspense>;
+}
+
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("invite");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,7 +44,7 @@ export default function RegisterPage() {
       setTokens(data.accessToken, data.refreshToken);
       setUser(data.user);
       toast.success("Cuenta creada exitosamente!");
-      router.push("/dashboard");
+      router.push(inviteToken ? `/invite/${inviteToken}` : "/dashboard");
     } catch {
       toast.error("Error de conexion");
     } finally {
@@ -123,7 +129,7 @@ export default function RegisterPage() {
       <div className="mt-6 pt-6 border-t border-border-subtle">
         <p className="text-center text-sm text-text-muted">
           Ya tienes cuenta?{" "}
-          <Link href="/login" className="text-brand hover:text-brand-light transition-colors font-medium">
+          <Link href={inviteToken ? `/login?invite=${inviteToken}` : "/login"} className="text-brand hover:text-brand-light transition-colors font-medium">
             Inicia sesion
           </Link>
         </p>

@@ -67,6 +67,25 @@ export async function POST(req: NextRequest) {
       })),
     });
 
+    // Auto-accept any pending invitations for this email
+    const pendingInvitations = await prisma.spaceInvitation.findMany({
+      where: { email, status: "PENDING", expiresAt: { gt: new Date() } },
+    });
+    for (const inv of pendingInvitations) {
+      const alreadyMember = await prisma.spaceMember.findUnique({
+        where: { spaceId_userId: { spaceId: inv.spaceId, userId: user.id } },
+      });
+      if (!alreadyMember) {
+        await prisma.spaceMember.create({
+          data: { spaceId: inv.spaceId, userId: user.id, role: "MEMBER" },
+        });
+      }
+      await prisma.spaceInvitation.update({
+        where: { id: inv.id },
+        data: { status: "ACCEPTED" },
+      });
+    }
+
     const accessToken = signAccessToken({ userId: user.id, email: user.email });
     const refreshToken = signRefreshToken({ userId: user.id, email: user.email });
 

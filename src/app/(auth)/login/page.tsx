@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,13 @@ import { toast } from "sonner";
 import { ArrowRight, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
+  return <Suspense><LoginForm /></Suspense>;
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("invite");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,7 +43,7 @@ export default function LoginPage() {
       setTokens(data.accessToken, data.refreshToken);
       setUser(data.user);
       toast.success("Bienvenido de vuelta!");
-      router.push("/dashboard");
+      router.push(inviteToken ? `/invite/${inviteToken}` : "/dashboard");
     } catch {
       toast.error("Error de conexion");
     } finally {
@@ -107,7 +113,7 @@ export default function LoginPage() {
       <div className="mt-6 pt-6 border-t border-border-subtle">
         <p className="text-center text-sm text-text-muted">
           No tienes cuenta?{" "}
-          <Link href="/register" className="text-brand hover:text-brand-light transition-colors font-medium">
+          <Link href={inviteToken ? `/register?invite=${inviteToken}` : "/register"} className="text-brand hover:text-brand-light transition-colors font-medium">
             Registrate
           </Link>
         </p>
