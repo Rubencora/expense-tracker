@@ -88,6 +88,8 @@ export default function GastosPage() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTag, setSelectedTag] = useState("all");
   const [newExpenseTags, setNewExpenseTags] = useState<string[]>([]);
+  const [suggestedTagIds, setSuggestedTagIds] = useState<string[]>([]);
+  const [expenseTagsMap, setExpenseTagsMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({});
 
   const [newMerchant, setNewMerchant] = useState("");
   const [newAmount, setNewAmount] = useState("");
@@ -143,6 +145,23 @@ export default function GastosPage() {
         `/api/expenses?${params.toString()}`
       );
       setExpenses(result.expenses);
+
+      // After expenses are loaded, fetch their tags
+      if (result.expenses.length > 0) {
+        const tagPromises = result.expenses.map((e) =>
+          apiClient<{ id: string; name: string; color: string }[]>(
+            `/api/expenses/${e.id}/tags`
+          ).catch(() => [] as { id: string; name: string; color: string }[])
+        );
+        const tagResults = await Promise.all(tagPromises);
+        const tagMap: Record<string, { id: string; name: string; color: string }[]> = {};
+        result.expenses.forEach((e, i) => {
+          tagMap[e.id] = tagResults[i] || [];
+        });
+        setExpenseTagsMap(tagMap);
+      } else {
+        setExpenseTagsMap({});
+      }
     } catch (err) {
       console.error("Error fetching expenses:", err);
     } finally {
@@ -161,6 +180,29 @@ export default function GastosPage() {
   useEffect(() => {
     fetchExpenses();
   }, [fetchExpenses]);
+
+  // Auto-suggest tags when merchant is typed (debounced)
+  useEffect(() => {
+    if (newMerchant.length < 2) {
+      setSuggestedTagIds([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await apiClient<{ suggestions: string[] }>(
+          `/api/tags/suggestions?merchant=${encodeURIComponent(newMerchant)}`
+        );
+        setSuggestedTagIds(res.suggestions);
+        // Auto-select suggested tags that aren't already selected
+        if (res.suggestions.length > 0 && newExpenseTags.length === 0) {
+          setNewExpenseTags(res.suggestions);
+        }
+      } catch {
+        // Silently ignore suggestion errors
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [newMerchant]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -245,6 +287,7 @@ export default function GastosPage() {
       setNewAmount("");
       setNewCategoryId("");
       setNewExpenseTags([]);
+      setSuggestedTagIds([]);
       setSplitType("equal");
       fetchExpenses();
     } catch (err) {
@@ -332,6 +375,7 @@ export default function GastosPage() {
             if (!open) {
               setSplitType("equal");
               setNewExpenseTags([]);
+              setSuggestedTagIds([]);
             }
           }}>
             <DialogTrigger asChild>
@@ -383,22 +427,37 @@ export default function GastosPage() {
                   </Select>
                 </div>
 
-                {tags.length > 0 && (
-                  <div className="space-y-2">
-                    <Label className="text-text-secondary text-xs uppercase tracking-wider">Etiquetas</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tags.map(t => (
-                        <button key={t.id} type="button"
-                          onClick={() => setNewExpenseTags(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
-                            newExpenseTags.includes(t.id) ? "border-brand/30 bg-brand/10 text-brand" : "border-border-subtle bg-surface-raised/50 text-text-muted hover:border-border-subtle/80"
-                          }`}>
-                          {t.name}
-                        </button>
-                      ))}
+                {tags.length > 0 && (() => {
+                  const sortedTags = [...tags].sort((a, b) => {
+                    const aIsSuggested = suggestedTagIds.includes(a.id);
+                    const bIsSuggested = suggestedTagIds.includes(b.id);
+                    if (aIsSuggested && !bIsSuggested) return -1;
+                    if (!aIsSuggested && bIsSuggested) return 1;
+                    return 0;
+                  });
+                  return (
+                    <div className="space-y-2">
+                      <Label className="text-text-secondary text-xs uppercase tracking-wider">
+                        Etiquetas
+                        {suggestedTagIds.length > 0 && (
+                          <span className="ml-2 text-[10px] text-brand/70 normal-case tracking-normal font-normal">sugerencias aplicadas</span>
+                        )}
+                      </Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {sortedTags.map((t) => (
+                          <button key={t.id} type="button"
+                            onClick={() => setNewExpenseTags(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                              newExpenseTags.includes(t.id) ? "border-brand/30 bg-brand/10 text-brand" : "border-border-subtle bg-surface-raised/50 text-text-muted hover:border-border-subtle/80"
+                            }`}>
+                            {t.name}
+                            {suggestedTagIds.includes(t.id) && <span className="ml-1 text-[9px] opacity-60">{"\u2726"}</span>}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Split Section - only for shared spaces */}
                 {isSharedSpace && spaceMembers.length > 1 && (
@@ -626,6 +685,19 @@ export default function GastosPage() {
                   </div>
                   {expense.descriptionAi && (
                     <p className="text-xs text-text-muted italic mt-1">{expense.descriptionAi}</p>
+                  )}
+                  {expenseTagsMap[expense.id]?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {expenseTagsMap[expense.id].map((tag) => (
+                        <span
+                          key={tag.id}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                          style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
+                        >
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   {expense.space && (
                     <p className="text-xs text-text-muted mt-1">Espacio: {expense.space.name}</p>

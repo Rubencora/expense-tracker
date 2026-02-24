@@ -69,6 +69,7 @@ model User {
   savingsGoals     SavingsGoal[]
   tags             Tag[]
   webhooks         Webhook[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -303,6 +304,7 @@ model Webhook {
   userId    String   @map("user_id")
   name      String
   url       String
+  events    String[] @default(["expense.created"])
   isActive  Boolean  @default(true) @map("is_active")
   secret    String?
   createdAt DateTime @default(now()) @map("created_at")
@@ -311,4 +313,18 @@ model Webhook {
 
   @@index([userId])
   @@map("webhooks")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

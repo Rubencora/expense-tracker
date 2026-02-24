@@ -3,10 +3,23 @@ import { z } from "zod";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const VALID_EVENTS = [
+  "expense.created",
+  "expense.deleted",
+  "income.created",
+  "goal.contributed",
+  "budget.exceeded",
+] as const;
+
 const createWebhookSchema = z.object({
   name: z.string().min(1, "Nombre requerido"),
   url: z.string().url("URL invalida"),
   secret: z.string().nullable().optional(),
+  events: z
+    .array(z.enum(VALID_EVENTS))
+    .min(1, "Debe seleccionar al menos un evento")
+    .optional()
+    .default(["expense.created"]),
 });
 
 export const GET = authMiddleware(async (_req: NextRequest, { userId }) => {
@@ -19,6 +32,7 @@ export const GET = authMiddleware(async (_req: NextRequest, { userId }) => {
         url: true,
         isActive: true,
         secret: true,
+        events: true,
         createdAt: true,
       },
       orderBy: { createdAt: "desc" },
@@ -46,7 +60,7 @@ export const POST = authMiddleware(async (req: NextRequest, { userId }) => {
       );
     }
 
-    const { name, url, secret } = parsed.data;
+    const { name, url, secret, events } = parsed.data;
 
     const webhook = await prisma.webhook.create({
       data: {
@@ -54,6 +68,7 @@ export const POST = authMiddleware(async (req: NextRequest, { userId }) => {
         name,
         url,
         secret: secret || null,
+        events,
       },
     });
 

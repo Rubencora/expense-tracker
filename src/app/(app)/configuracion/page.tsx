@@ -15,7 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
-import { Copy, RefreshCw, Check, Smartphone, Eye, EyeOff, MessageCircle, Unlink, Loader2, Webhook, Plus, Trash2 } from "lucide-react";
+import { Copy, RefreshCw, Check, Smartphone, Eye, EyeOff, MessageCircle, Unlink, Loader2, Webhook, Plus, Trash2, Bell, BellOff } from "lucide-react";
 
 interface UserProfile {
   id: string;
@@ -55,6 +55,68 @@ export default function ConfiguracionPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [webhookAdding, setWebhookAdding] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
+  // Check push notification support on mount
+  useEffect(() => {
+    if ("serviceWorker" in navigator && "PushManager" in window) {
+      setPushSupported(true);
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.pushManager.getSubscription().then((sub) => {
+          setPushEnabled(!!sub);
+        });
+      });
+      // Register service worker
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  }, []);
+
+  const handleTogglePush = async () => {
+    setPushLoading(true);
+    try {
+      if (pushEnabled) {
+        // Unsubscribe
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await apiClient("/api/push/subscribe", {
+            method: "DELETE",
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          });
+          await sub.unsubscribe();
+        }
+        setPushEnabled(false);
+        toast.success("Notificaciones desactivadas");
+      } else {
+        // Subscribe
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+        });
+        const subJson = sub.toJSON();
+        await apiClient("/api/push/subscribe", {
+          method: "POST",
+          body: JSON.stringify({
+            endpoint: sub.endpoint,
+            keys: {
+              p256dh: subJson.keys?.p256dh,
+              auth: subJson.keys?.auth,
+            },
+          }),
+        });
+        setPushEnabled(true);
+        toast.success("Notificaciones activadas");
+      }
+    } catch (err) {
+      console.error("Push toggle error:", err);
+      toast.error("Error al cambiar notificaciones push");
+    } finally {
+      setPushLoading(false);
+    }
+  };
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -320,6 +382,42 @@ export default function ConfiguracionPage() {
           </Select>
         </div>
       </div>
+
+      {/* Push Notifications */}
+      {pushSupported && (
+        <div className="glass-card rounded-2xl p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-brand/10 rounded-xl">
+              {pushEnabled ? <Bell className="h-4 w-4 text-brand" /> : <BellOff className="h-4 w-4 text-text-muted" />}
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">Notificaciones Push</h3>
+              <p className="text-xs text-text-muted">Alertas de gastos inusuales, duplicados y presupuestos</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-xl bg-surface-raised/50">
+            <div>
+              <p className="text-sm font-medium text-text-primary">
+                {pushEnabled ? "Notificaciones activadas" : "Notificaciones desactivadas"}
+              </p>
+              <p className="text-xs text-text-muted">
+                {pushEnabled ? "Recibiras alertas en este dispositivo" : "Activa para recibir alertas en tiempo real"}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTogglePush}
+              disabled={pushLoading}
+              className={pushEnabled
+                ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
+                : "border-brand/20 text-brand hover:bg-brand/10"}
+            >
+              {pushLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : pushEnabled ? "Desactivar" : "Activar"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Webhooks */}
       <div className="glass-card rounded-2xl p-6 space-y-4">

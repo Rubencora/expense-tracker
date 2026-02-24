@@ -156,58 +156,268 @@ export default function DashboardPage() {
       const doc = new jsPDF();
       const now = new Date();
       const monthLabel = now.toLocaleDateString("es-CO", { month: "long", year: "numeric" });
+      const generatedDate = now.toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
-      doc.setFontSize(18);
-      doc.text("Reporte Financiero", 14, 22);
-      doc.setFontSize(11);
-      doc.setTextColor(100);
-      doc.text(monthLabel, 14, 30);
+      // Helper to check if we need a new page
+      const checkPageBreak = (currentY: number, needed: number = 30): number => {
+        if (currentY + needed > 275) {
+          doc.addPage();
+          return 20;
+        }
+        return currentY;
+      };
 
-      let y = 40;
+      // --- 1. Header ---
+      doc.setFillColor(16, 185, 129);
+      doc.rect(0, 0, 210, 35, "F");
+      doc.setFontSize(20);
+      doc.setTextColor(255, 255, 255);
+      doc.text("Reporte Financiero Mensual", 14, 18);
+      doc.setFontSize(10);
+      doc.text(monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1), 14, 26);
+      doc.setFontSize(8);
+      doc.setTextColor(220, 255, 240);
+      doc.text(`Generado: ${generatedDate}`, 14, 32);
+
+      let y = 45;
+
+      // --- 2. Cash Flow Summary ---
       if (cashFlow) {
-        doc.setFontSize(13);
-        doc.setTextColor(0);
-        doc.text("Resumen", 14, y);
+        doc.setFontSize(14);
+        doc.setTextColor(16, 185, 129);
+        doc.text("Resumen de Flujo de Caja", 14, y);
+        y += 2;
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.5);
+        doc.line(14, y, 196, y);
         y += 8;
+
         doc.setFontSize(10);
         doc.setTextColor(60);
-        doc.text(`Ingresos mensuales: $${cashFlow.monthlyIncome.toFixed(2)} USD`, 14, y); y += 6;
-        doc.text(`Gastos este mes: $${cashFlow.monthlyExpenses.toFixed(2)} USD`, 14, y); y += 6;
-        doc.text(`Balance: $${cashFlow.balance.toFixed(2)} USD`, 14, y); y += 6;
-        doc.text(`Tasa de ahorro: ${cashFlow.savingsRate.toFixed(0)}%`, 14, y); y += 10;
+
+        const summaryItems = [
+          { label: "Ingresos mensuales", value: `$${cashFlow.monthlyIncome.toFixed(2)} USD` },
+          { label: "Gastos este mes", value: `$${cashFlow.monthlyExpenses.toFixed(2)} USD` },
+          { label: "Balance", value: `$${cashFlow.balance.toFixed(2)} USD` },
+          { label: "Tasa de ahorro", value: `${cashFlow.savingsRate.toFixed(1)}%` },
+          { label: "Disponible por dia", value: `$${cashFlow.dailyAvailable.toFixed(2)} USD` },
+        ];
+
+        summaryItems.forEach((item) => {
+          doc.setTextColor(100);
+          doc.text(item.label + ":", 14, y);
+          doc.setTextColor(30);
+          doc.text(item.value, 80, y);
+          y += 6;
+        });
+
+        y += 6;
       }
 
+      // --- 3. Category Table ---
       if (data && data.categoryDistribution.length > 0) {
-        doc.setFontSize(13);
-        doc.setTextColor(0);
-        doc.text("Gastos por Categoria", 14, y);
+        y = checkPageBreak(y, 40);
+        doc.setFontSize(14);
+        doc.setTextColor(16, 185, 129);
+        doc.text("Desglose por Categoria", 14, y);
+        y += 2;
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.5);
+        doc.line(14, y, 196, y);
         y += 4;
+
+        const totalExpenses = data.categoryDistribution.reduce((sum, c) => sum + c.total, 0);
         autoTable(doc, {
           startY: y,
-          head: [["Categoria", "Total USD", "Gastos"]],
-          body: data.categoryDistribution.map((c) => [`${c.emoji} ${c.name}`, `$${c.total.toFixed(2)}`, String(c.count)]),
-          theme: "grid",
-          headStyles: { fillColor: [16, 185, 129] },
+          head: [["", "Categoria", "Total USD", "Transacciones", "% del Total"]],
+          body: data.categoryDistribution.map((c) => [
+            c.emoji,
+            c.name,
+            `$${c.total.toFixed(2)}`,
+            String(c.count),
+            `${totalExpenses > 0 ? ((c.total / totalExpenses) * 100).toFixed(1) : "0"}%`,
+          ]),
+          theme: "striped",
+          headStyles: { fillColor: [16, 185, 129], fontSize: 9 },
+          bodyStyles: { fontSize: 9 },
+          columnStyles: {
+            0: { cellWidth: 12, halign: "center" },
+            2: { halign: "right" },
+            3: { halign: "center" },
+            4: { halign: "right" },
+          },
+          foot: [["", "TOTAL", `$${totalExpenses.toFixed(2)}`, String(data.categoryDistribution.reduce((s, c) => s + c.count, 0)), "100%"]],
+          footStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 9 },
         });
         y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
       }
 
-      if (insights.length > 0) {
-        doc.setFontSize(13);
-        doc.setTextColor(0);
-        doc.text("Insights", 14, y);
+      // --- 4. Daily Trend Summary ---
+      if (data && data.dailyTrend.length > 0) {
+        y = checkPageBreak(y, 40);
+        doc.setFontSize(14);
+        doc.setTextColor(16, 185, 129);
+        doc.text("Tendencia Diaria de Gastos", 14, y);
+        y += 2;
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.5);
+        doc.line(14, y, 196, y);
         y += 8;
+
+        const dailyTotals = data.dailyTrend.filter((d) => d.total > 0);
+        const maxDay = dailyTotals.reduce((max, d) => (d.total > max.total ? d : max), dailyTotals[0] || { date: "", total: 0 });
+        const avgDaily = dailyTotals.length > 0 ? dailyTotals.reduce((s, d) => s + d.total, 0) / dailyTotals.length : 0;
+
+        doc.setFontSize(10);
+        doc.setTextColor(60);
+        doc.text(`Dias con gastos: ${dailyTotals.length} de ${data.dailyTrend.length}`, 14, y); y += 6;
+        doc.text(`Promedio diario (dias con gasto): $${avgDaily.toFixed(2)} USD`, 14, y); y += 6;
+        if (maxDay && maxDay.date) {
+          const maxDate = new Date(maxDay.date + "T12:00:00").toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" });
+          doc.text(`Dia con mayor gasto: ${maxDate} - $${maxDay.total.toFixed(2)} USD`, 14, y); y += 6;
+        }
+
+        // Text-based bar chart for top 10 days
+        y += 2;
+        const topDays = [...dailyTotals].sort((a, b) => b.total - a.total).slice(0, 10);
+        const maxTotal = topDays.length > 0 ? topDays[0].total : 1;
+        doc.setFontSize(8);
+        topDays.forEach((day) => {
+          y = checkPageBreak(y, 8);
+          const dateLabel = new Date(day.date + "T12:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "short" });
+          const barWidth = Math.max((day.total / maxTotal) * 100, 2);
+          doc.setTextColor(80);
+          doc.text(dateLabel, 14, y);
+          doc.setFillColor(16, 185, 129);
+          doc.rect(40, y - 3, barWidth, 3.5, "F");
+          doc.setTextColor(60);
+          doc.text(`$${day.total.toFixed(2)}`, 145, y);
+          y += 5.5;
+        });
+        y += 6;
+      }
+
+      // --- 5. Savings Goals ---
+      if (availableData && availableData.activeGoals.length > 0) {
+        y = checkPageBreak(y, 40);
+        doc.setFontSize(14);
+        doc.setTextColor(16, 185, 129);
+        doc.text("Metas de Ahorro", 14, y);
+        y += 2;
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.5);
+        doc.line(14, y, 196, y);
+        y += 4;
+
+        autoTable(doc, {
+          startY: y,
+          head: [["", "Meta", "Progreso", "Actual", "Objetivo"]],
+          body: availableData.activeGoals.map((goal) => {
+            const progress = goal.targetAmountUsd > 0
+              ? Math.min((goal.currentAmountUsd / goal.targetAmountUsd) * 100, 100)
+              : 0;
+            return [
+              goal.icon,
+              goal.name,
+              `${progress.toFixed(1)}%`,
+              `$${goal.currentAmountUsd.toFixed(2)}`,
+              `$${goal.targetAmountUsd.toFixed(2)}`,
+            ];
+          }),
+          theme: "striped",
+          headStyles: { fillColor: [139, 92, 246], fontSize: 9 },
+          bodyStyles: { fontSize: 9 },
+          columnStyles: {
+            0: { cellWidth: 12, halign: "center" },
+            2: { halign: "center" },
+            3: { halign: "right" },
+            4: { halign: "right" },
+          },
+        });
+        y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+      }
+
+      // --- 6. AI Insights ---
+      if (insights.length > 0) {
+        y = checkPageBreak(y, 30);
+        doc.setFontSize(14);
+        doc.setTextColor(16, 185, 129);
+        doc.text("Insights de IA", 14, y);
+        y += 2;
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.5);
+        doc.line(14, y, 196, y);
+        y += 8;
+
         doc.setFontSize(10);
         doc.setTextColor(60);
         insights.forEach((insight) => {
-          const lines = doc.splitTextToSize(`• ${insight}`, 180);
-          doc.text(lines, 14, y);
-          y += lines.length * 5 + 3;
+          y = checkPageBreak(y, 12);
+          const lines = doc.splitTextToSize(`\u2022 ${insight}`, 175);
+          doc.text(lines, 18, y);
+          y += lines.length * 5 + 4;
         });
+        y += 4;
       }
 
-      doc.save(`reporte-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}.pdf`);
-      toast.success("PDF descargado");
+      // --- 7. Recent Expenses Table ---
+      try {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const expensesForPdf = await apiClient<{ expenses: { merchant: string; amount: number; currency: string; amountUsd: number; category: { emoji: string; name: string }; createdAt: string }[] }>("/api/expenses?limit=30&dateFrom=" + monthStart);
+
+        if (expensesForPdf.expenses && expensesForPdf.expenses.length > 0) {
+          y = checkPageBreak(y, 40);
+          doc.setFontSize(14);
+          doc.setTextColor(16, 185, 129);
+          doc.text("Ultimos Gastos del Mes", 14, y);
+          y += 2;
+          doc.setDrawColor(16, 185, 129);
+          doc.setLineWidth(0.5);
+          doc.line(14, y, 196, y);
+          y += 4;
+
+          autoTable(doc, {
+            startY: y,
+            head: [["Comercio", "Monto", "Moneda", "USD", "Categoria", "Fecha"]],
+            body: expensesForPdf.expenses.map((e) => [
+              e.merchant.length > 22 ? e.merchant.substring(0, 22) + "..." : e.merchant,
+              e.currency === "COP"
+                ? `$${Math.round(e.amount).toLocaleString("es-CO")}`
+                : `$${e.amount.toFixed(2)}`,
+              e.currency,
+              `$${e.amountUsd.toFixed(2)}`,
+              `${e.category.emoji} ${e.category.name}`,
+              new Date(e.createdAt).toLocaleDateString("es-CO", { day: "2-digit", month: "short" }),
+            ]),
+            theme: "striped",
+            headStyles: { fillColor: [59, 130, 246], fontSize: 8 },
+            bodyStyles: { fontSize: 8 },
+            columnStyles: {
+              0: { cellWidth: 45 },
+              1: { halign: "right", cellWidth: 28 },
+              2: { halign: "center", cellWidth: 15 },
+              3: { halign: "right", cellWidth: 22 },
+              4: { cellWidth: 38 },
+              5: { halign: "center", cellWidth: 22 },
+            },
+            margin: { left: 14, right: 14 },
+          });
+        }
+      } catch (expErr) {
+        console.error("Error fetching expenses for PDF:", expErr);
+      }
+
+      // --- Footer ---
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(160);
+        doc.text(`MisGastos.app - Reporte generado automaticamente | Pagina ${i} de ${pageCount}`, 14, 290);
+      }
+
+      doc.save(`reporte-financiero-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}.pdf`);
+      toast.success("Reporte PDF descargado");
     } catch (err) {
       console.error("PDF export error:", err);
       toast.error("Error al generar PDF");

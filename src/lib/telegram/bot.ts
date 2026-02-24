@@ -90,6 +90,9 @@ function createBot(): Bot {
         "/presupuesto - Estado de presupuestos\n" +
         "/top - Top 5 comercios del mes\n" +
         "/comparar - Comparar con mes anterior\n\n" +
+        "🤖 *Chat IA:*\n" +
+        "/chat _pregunta_ - Pregunta sobre tus finanzas\n" +
+        "O envia una pregunta con ? (ej: ¿cuanto gaste hoy?)\n\n" +
         "🔍 *Busqueda:*\n" +
         "/buscar _texto_ - Buscar gastos por comercio\n\n" +
         "/ayuda - Este mensaje",
@@ -544,6 +547,22 @@ function createBot(): Bot {
     await ctx.reply(msg, { parse_mode: "Markdown" });
   });
 
+  // /chat - AI chat about finances
+  bot.command("chat", async (ctx) => {
+    const user = await findUserByChatId(String(ctx.chat.id));
+    if (!user) return ctx.reply("Cuenta no vinculada. Envia tu codigo de 6 digitos.");
+
+    const question = ctx.message?.text?.replace(/^\/chat\s*/i, "").trim();
+    if (!question) {
+      return ctx.reply(
+        "Uso: /chat _tu pregunta_\nEjemplo: `/chat cuanto gaste en restaurantes este mes?`",
+        { parse_mode: "Markdown" }
+      );
+    }
+
+    await handleChatQuestion(ctx, user.id, question);
+  });
+
   // Callback queries for inline keyboards
   bot.on("callback_query:data", async (ctx) => {
     const data = ctx.callbackQuery.data;
@@ -637,6 +656,28 @@ function createBot(): Bot {
       return;
     }
 
+    // Keep duplicate - user confirms it's a new expense
+    if (data.startsWith("keepdup:")) {
+      const _expenseId = data.replace("keepdup:", "");
+      await ctx.answerCallbackQuery({ text: "Gasto conservado" });
+      await ctx.editMessageText("✅ Entendido, el gasto se conserva.");
+      return;
+    }
+
+    // Delete duplicate expense
+    if (data.startsWith("deldup:")) {
+      const expenseId = data.replace("deldup:", "");
+      try {
+        await prisma.expense.delete({ where: { id: expenseId } });
+        await ctx.answerCallbackQuery({ text: "Duplicado eliminado" });
+        await ctx.editMessageText("🗑 Gasto duplicado eliminado.");
+      } catch {
+        await ctx.answerCallbackQuery({ text: "No se pudo eliminar" });
+        await ctx.editMessageText("⚠️ No se pudo eliminar el gasto. Puede que ya haya sido eliminado.");
+      }
+      return;
+    }
+
     await ctx.answerCallbackQuery();
   });
 
@@ -675,6 +716,12 @@ function createBot(): Bot {
     const user = await findUserByChatId(chatId);
     if (!user) {
       return ctx.reply("Cuenta no vinculada. Envia tu codigo de 6 digitos.");
+    }
+
+    // Detect natural language questions and route to AI chat
+    if (isQuestion(text)) {
+      await handleChatQuestion(ctx, user.id, text);
+      return;
     }
 
     // Parse expense from text using AI
@@ -769,6 +816,287 @@ async function processExpenseText(ctx: Context, userId: string, text: string) {
   } catch (error) {
     console.error("Process expense text error:", error);
     await ctx.reply("Error al procesar el mensaje. Intenta de nuevo.");
+  }
+}
+
+// --- Question detection ---
+
+function isQuestion(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  if (lower.includes("?")) return true;
+  if (lower.startsWith("¿")) return true;
+  if (lower.startsWith("cuanto") || lower.startsWith("cuánto")) return true;
+  if (lower.startsWith("cual") || lower.startsWith("cuál")) return true;
+  if (lower.startsWith("como") || lower.startsWith("cómo")) return true;
+  return false;
+}
+
+// --- AI Chat with financial context ---
+
+async function handleChatQuestion(ctx: Context, userId: string, question: string) {
+  try {
+    await ctx.replyWithChatAction("typing");
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [
+      monthlyExpenses,
+      topCategories,
+      activeIncomes,
+      recentExpenses,
+      savingsGoals,
+    ] = await Promise.all([
+      prisma.expense.aggregate({
+        where: { userId, createdAt: { gte: startOfMonth } },
+        _sum: { amountUsd: true },
+        _count: true,
+      }),
+      prisma.expense.groupBy({
+        by: ["categoryId"],
+        where: { userId, createdAt: { gte: startOfMonth } },
+        _sum: { amountUsd: true },
+        orderBy: { _sum: { amountUsd: "desc" } },
+        take: 5,
+      }),
+      prisma.income.findMany({
+        where: { userId, isActive: true },
+        select: { amountUsd: true, frequency: true, name: true },
+      }),
+      prisma.expense.findMany({
+        where: { userId },
+        select: {
+          merchant: true,
+          amountUsd: true,
+          category: { select: { name: true } },
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      prisma.savingsGoal.findMany({
+        where: { userId, isCompleted: false },
+        select: { name: true, targetAmountUsd: true, currentAmountUsd: true },
+      }),
+    ]);
+
+    // Resolve category names
+    const categoryIds = topCategories.map((c) => c.categoryId);
+    const categories = await prisma.category.findMany({
+      where: { id: { in: categoryIds } },
+      select: { id: true, name: true, emoji: true },
+    });
+    const categoryMap = new Map(categories.map((c) => [c.id, c]));
+
+    const topCategoriesFormatted = topCategories
+      .map((c) => {
+        const cat = categoryMap.get(c.categoryId);
+        return cat
+          ? `${cat.emoji} ${cat.name}: $${(c._sum.amountUsd ?? 0).toFixed(2)} USD`
+          : null;
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    // Calculate total monthly income
+    const totalMonthlyIncome = activeIncomes.reduce((sum, inc) => {
+      switch (inc.frequency) {
+        case "MONTHLY":
+          return sum + inc.amountUsd;
+        case "WEEKLY":
+          return sum + (inc.amountUsd * 52) / 12;
+        case "BIWEEKLY":
+          return sum + (inc.amountUsd * 26) / 12;
+        case "YEARLY":
+          return sum + inc.amountUsd / 12;
+        case "ONCE":
+          return sum;
+        default:
+          return sum;
+      }
+    }, 0);
+
+    const recentExpensesFormatted = recentExpenses
+      .map(
+        (e) =>
+          `- ${e.merchant}: $${e.amountUsd.toFixed(2)} USD (${e.category.name}) - ${e.createdAt.toLocaleDateString("es-CO")}`
+      )
+      .join("\n");
+
+    const savingsGoalsFormatted =
+      savingsGoals.length > 0
+        ? savingsGoals
+            .map(
+              (g) =>
+                `- ${g.name}: $${g.currentAmountUsd.toFixed(2)} / $${g.targetAmountUsd.toFixed(2)} USD (${Math.round((g.currentAmountUsd / g.targetAmountUsd) * 100)}%)`
+            )
+            .join("\n")
+        : "No hay metas de ahorro activas.";
+
+    const totalExpensesThisMonth = monthlyExpenses._sum.amountUsd ?? 0;
+    const expenseCount = monthlyExpenses._count;
+    const remainingBudget = totalMonthlyIncome - totalExpensesThisMonth;
+
+    const systemPrompt = `Eres un asistente financiero para Telegram. Responde siempre en espanol, de forma MUY concisa (maximo 2-3 lineas). Usa los datos reales del usuario.
+
+CONTEXTO FINANCIERO (este mes):
+Gastos totales: $${totalExpensesThisMonth.toFixed(2)} USD (${expenseCount} transacciones)
+Ingreso mensual: $${totalMonthlyIncome.toFixed(2)} USD
+Disponible: $${remainingBudget.toFixed(2)} USD
+
+Top categorias:
+${topCategoriesFormatted || "Sin gastos este mes."}
+
+Ultimos gastos:
+${recentExpensesFormatted || "Sin gastos recientes."}
+
+Metas de ahorro:
+${savingsGoalsFormatted}
+
+INSTRUCCIONES:
+- Responde en espanol, MUY conciso (es Telegram, pantalla pequena).
+- Referencia datos reales cuando sea relevante.
+- Da consejos practicos y personalizados.
+- Si no es sobre finanzas, redirige amablemente.
+- No uses markdown excesivo, solo *negritas* cuando sea necesario.`;
+
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: question },
+      ],
+      max_tokens: 300,
+      temperature: 0.7,
+    });
+
+    const reply = completion.choices[0]?.message?.content ?? "No pude generar una respuesta. Intenta de nuevo.";
+
+    await ctx.reply(`🤖 ${reply}`, { parse_mode: "Markdown" });
+  } catch (error) {
+    console.error("Chat question error:", error);
+    await ctx.reply("Error al procesar tu pregunta. Intenta de nuevo.");
+  }
+}
+
+// --- Anomaly & Duplicate Detection ---
+
+interface ExpenseNotifyParams {
+  id: string;
+  merchant: string;
+  amount: number;
+  currency: string;
+  amountUsd: number;
+  categoryId: string;
+  categoryName: string;
+}
+
+export async function checkAnomalyAndNotify(
+  userId: string,
+  expense: ExpenseNotifyParams
+): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { telegramChatId: true },
+    });
+
+    if (!user?.telegramChatId) return;
+
+    // Get average for this category in last 90 days (excluding the new expense)
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    const avgResult = await prisma.expense.aggregate({
+      where: {
+        userId,
+        categoryId: expense.categoryId,
+        id: { not: expense.id },
+        createdAt: { gte: ninetyDaysAgo },
+      },
+      _avg: { amountUsd: true },
+      _count: true,
+    });
+
+    const avgAmountUsd = avgResult._avg.amountUsd;
+    const count = avgResult._count;
+
+    // Need at least 3 expenses to establish an average
+    if (!avgAmountUsd || count < 3) return;
+
+    const ratio = expense.amountUsd / avgAmountUsd;
+
+    if (ratio > 2) {
+      const bot = getBot();
+      const ratioStr = ratio.toFixed(1);
+      const message =
+        `⚠️ *Alerta de gasto inusual*\n\n` +
+        `${expense.merchant} - $${fmt(expense.amountUsd)} USD\n` +
+        `Esto es ${ratioStr}x mas que tu promedio en ${expense.categoryName}.`;
+
+      await bot.api.sendMessage(user.telegramChatId, message, {
+        parse_mode: "Markdown",
+      });
+    }
+  } catch (error) {
+    console.error("Anomaly check error:", error);
+  }
+}
+
+export async function checkDuplicateAndNotify(
+  userId: string,
+  expense: ExpenseNotifyParams
+): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { telegramChatId: true },
+    });
+
+    if (!user?.telegramChatId) return;
+
+    // Check for duplicate: same merchant (case-insensitive) AND similar amount (within 5%) in last 24 hours
+    const twentyFourHoursAgo = new Date();
+    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+    const possibleDuplicates = await prisma.expense.findMany({
+      where: {
+        userId,
+        id: { not: expense.id },
+        merchant: { equals: expense.merchant, mode: "insensitive" },
+        createdAt: { gte: twentyFourHoursAgo },
+      },
+      select: { id: true, merchant: true, amountUsd: true, createdAt: true },
+    });
+
+    // Check if any have similar amount (within 5%)
+    const duplicate = possibleDuplicates.find((d) => {
+      const diff = Math.abs(d.amountUsd - expense.amountUsd);
+      const threshold = expense.amountUsd * 0.05;
+      return diff <= threshold;
+    });
+
+    if (!duplicate) return;
+
+    const bot = getBot();
+    const keyboard = new InlineKeyboard()
+      .text("✅ Es nuevo", `keepdup:${expense.id}`)
+      .text("🗑 Eliminar duplicado", `deldup:${expense.id}`);
+
+    const message =
+      `⚠️ *Posible gasto duplicado*\n\n` +
+      `${expense.merchant} - $${fmt(expense.amountUsd)} USD\n` +
+      `Ya tienes un gasto similar registrado en las ultimas 24h.\n\n` +
+      `¿Quieres conservarlo o eliminarlo?`;
+
+    await bot.api.sendMessage(user.telegramChatId, message, {
+      parse_mode: "Markdown",
+      reply_markup: keyboard,
+    });
+  } catch (error) {
+    console.error("Duplicate check error:", error);
   }
 }
 

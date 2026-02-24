@@ -6,6 +6,8 @@ import { convertToUSD } from "@/lib/currency";
 import { Prisma } from "@/generated/prisma/client";
 import { isSpaceMember } from "@/lib/space-auth";
 import { triggerWebhooks } from "@/lib/webhook-trigger";
+import { checkAnomalyAndNotify, checkDuplicateAndNotify } from "@/lib/telegram/bot";
+import { sendPushNotification } from "@/lib/push";
 
 const splitShareSchema = z.object({
   userId: z.string(),
@@ -194,6 +196,27 @@ export const POST = authMiddleware(async (req, { userId }) => {
       amountUsd: expense.amountUsd,
       category: expense.category,
     });
+
+    // Anomaly + duplicate detection via Telegram (fire-and-forget)
+    const notifyParams = {
+      id: expense.id,
+      merchant: expense.merchant,
+      amount: expense.amount,
+      currency: expense.currency,
+      amountUsd: expense.amountUsd,
+      categoryId: expense.categoryId,
+      categoryName: category.name,
+    };
+    checkAnomalyAndNotify(userId, notifyParams).catch(() => {});
+    checkDuplicateAndNotify(userId, notifyParams).catch(() => {});
+
+    // Push notification for new expense (fire-and-forget)
+    sendPushNotification(userId, {
+      title: `Gasto registrado`,
+      body: `${expense.merchant} - $${expense.amount.toLocaleString()} ${expense.currency}`,
+      tag: "expense-created",
+      url: "/gastos",
+    }).catch(() => {});
 
     return NextResponse.json(expense, { status: 201 });
   } catch (error) {
