@@ -21,7 +21,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { email, password } = parsed.data;
+    const { password } = parsed.data;
+    const email = parsed.data.email.toLowerCase();
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {

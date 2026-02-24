@@ -44,7 +44,7 @@ model User {
   spaceMemberships SpaceMember[]
   spacesCreated    Space[]           @relation("SpaceCreator")
   budgets          Budget[]
-  defaultSpace     Space?            @relation("DefaultSpace", fields: [defaultSpaceId], references: [id])
+  defaultSpace     Space?            @relation("DefaultSpace", fields: [defaultSpaceId], references: [id], onDelete: SetNull)
   sentInvitations  SpaceInvitation[] @relation("InvitedBy")
 
   @@map("users")

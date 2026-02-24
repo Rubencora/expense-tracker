@@ -27,7 +27,7 @@ export const POST = authMiddleware(async (req: NextRequest, { params, userId }) 
       );
     }
 
-    const { email } = parsed.data;
+    const email = parsed.data.email.toLowerCase();
 
     // Check if user is already a member
     const existingUser = await prisma.user.findUnique({ where: { email } });

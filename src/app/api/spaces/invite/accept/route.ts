@@ -56,16 +56,14 @@ export const POST = authMiddleware(async (req: NextRequest, { userId }) => {
       });
     }
 
-    // Create membership and mark invitation as accepted
-    await prisma.$transaction([
-      prisma.spaceMember.create({
-        data: { spaceId: invitation.spaceId, userId, role: "MEMBER" },
-      }),
-      prisma.spaceInvitation.update({
-        where: { id: invitation.id },
-        data: { status: "ACCEPTED" },
-      }),
-    ]);
+    // Create membership first, then mark invitation as accepted
+    await prisma.spaceMember.create({
+      data: { spaceId: invitation.spaceId, userId, role: "MEMBER" },
+    });
+    await prisma.spaceInvitation.update({
+      where: { id: invitation.id },
+      data: { status: "ACCEPTED" },
+    });
 
     return NextResponse.json({
       success: true,
