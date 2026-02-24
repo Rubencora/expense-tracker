@@ -125,15 +125,29 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
       .sort((a, b) => b.total - a.total);
   }
 
-  // Daily trend
+  // Daily trend - fill all days from dateFrom to now
   const dailyMap = new Map<string, number>();
   for (const e of expenses) {
     const day = e.createdAt.toISOString().split("T")[0];
     dailyMap.set(day, (dailyMap.get(day) || 0) + e.amountUsd);
   }
-  const dailyTrend = Array.from(dailyMap.entries())
-    .map(([date, total]) => ({ date, total: Math.round(total * 100) / 100 }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const dailyTrend: { date: string; total: number }[] = [];
+  if (period !== "all") {
+    const cursor = new Date(dateFrom);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    while (cursor <= today) {
+      const key = cursor.toISOString().split("T")[0];
+      dailyTrend.push({ date: key, total: Math.round((dailyMap.get(key) || 0) * 100) / 100 });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  } else {
+    // "all" period: only show days with expenses
+    dailyTrend.push(
+      ...Array.from(dailyMap.entries())
+        .map(([date, total]) => ({ date, total: Math.round(total * 100) / 100 }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    );
+  }
 
   return NextResponse.json({
     totalUsd: Math.round(totalUsd * 100) / 100,

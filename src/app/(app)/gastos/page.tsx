@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, getUser } from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -358,16 +358,22 @@ export default function GastosPage() {
                     </span>
                   </div>
                   <div className="mt-2">
-                    <Select value={expense.category.id} onValueChange={(val) => handleCategoryChange(expense.id, val)}>
-                      <SelectTrigger className="h-7 text-xs w-fit bg-surface-overlay/50 border-border-subtle rounded-lg">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-surface-overlay border-border-subtle">
-                        {categories.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {expense.user.id === getUser()?.id ? (
+                      <Select value={expense.category.id} onValueChange={(val) => handleCategoryChange(expense.id, val)}>
+                        <SelectTrigger className="h-7 text-xs w-fit bg-surface-overlay/50 border-border-subtle rounded-lg">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-surface-overlay border-border-subtle">
+                          {categories.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="inline-flex items-center h-7 px-2.5 text-xs rounded-lg bg-surface-overlay/50 border border-border-subtle text-text-muted">
+                        {expense.category.emoji} {expense.category.name}
+                      </span>
+                    )}
                   </div>
                   {expense.descriptionAi && (
                     <p className="text-xs text-text-muted italic mt-1">{expense.descriptionAi}</p>
