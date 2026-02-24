@@ -50,13 +50,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Log raw body for debugging iOS Shortcuts format
-    console.log("Shortcut raw body:", JSON.stringify(body));
+    // iOS Shortcuts adds leading/trailing spaces to JSON keys — normalize them
+    const normalized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body)) {
+      normalized[key.trim().toLowerCase()] = value;
+    }
 
-    // Lenient extraction - iOS Shortcuts may send keys in various cases/formats
-    const merchant = String(body.merchant || body.Merchant || body.MERCHANT || "").trim();
-    const rawAmount = body.amount ?? body.Amount ?? body.AMOUNT;
-    const rawCurrency = body.currency || body.Currency || body.CURRENCY;
+    // Lenient extraction
+    const merchant = String(normalized.merchant || "").trim();
+    const rawAmount = normalized.amount;
+    const rawCurrency = normalized.currency;
 
     if (!merchant) {
       return NextResponse.json(
