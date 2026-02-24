@@ -11,6 +11,34 @@ const updateExpenseSchema = z.object({
   categoryId: z.string().optional(),
 });
 
+export const DELETE = authMiddleware(async (_req: NextRequest, { params, userId }) => {
+  try {
+    const { id } = await params;
+
+    const expense = await prisma.expense.findFirst({
+      where: { id, userId },
+    });
+
+    if (!expense) {
+      return NextResponse.json(
+        { error: "Gasto no encontrado" },
+        { status: 404 }
+      );
+    }
+
+    // Delete expense (cascade deletes splits + tags)
+    await prisma.expense.delete({ where: { id } });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Delete expense error:", error);
+    return NextResponse.json(
+      { error: "Error al eliminar el gasto" },
+      { status: 500 }
+    );
+  }
+});
+
 export const PATCH = authMiddleware(async (req, { params, userId }) => {
   try {
     const { id } = await params;
@@ -69,33 +97,6 @@ export const PATCH = authMiddleware(async (req, { params, userId }) => {
     console.error("Update expense error:", error);
     return NextResponse.json(
       { error: "Error al actualizar el gasto" },
-      { status: 500 }
-    );
-  }
-});
-
-export const DELETE = authMiddleware(async (_req: NextRequest, { params, userId }) => {
-  try {
-    const { id } = await params;
-
-    const expense = await prisma.expense.findFirst({
-      where: { id, userId },
-    });
-
-    if (!expense) {
-      return NextResponse.json(
-        { error: "Gasto no encontrado" },
-        { status: 404 }
-      );
-    }
-
-    await prisma.expense.delete({ where: { id } });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Delete expense error:", error);
-    return NextResponse.json(
-      { error: "Error al eliminar el gasto" },
       { status: 500 }
     );
   }

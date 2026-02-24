@@ -11,6 +11,7 @@ enum ExpenseSource {
   WEB
   TELEGRAM
   SHORTCUT
+  EXCEL
 }
 
 enum SpaceRole {

@@ -23,7 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Trash2, Download, Loader2, Split } from "lucide-react";
+import { Plus, Trash2, Download, Upload, Loader2, Split } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface Category {
@@ -96,6 +96,10 @@ export default function GastosPage() {
   const [newCurrency, setNewCurrency] = useState("COP");
   const [newCategoryId, setNewCategoryId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [uploadPreview, setUploadPreview] = useState<{ merchant: string; amount: number; currency: string; categoryId: string; date?: string }[]>([]);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   // Split state
   const [splitType, setSplitType] = useState<SplitTypeOption>("equal");
@@ -205,6 +209,7 @@ export default function GastosPage() {
   }, [newMerchant]);
 
   const handleDelete = async (id: string) => {
+    if (!confirm("¿Eliminar este gasto?")) return;
     try {
       await apiClient(`/api/expenses/${id}`, { method: "DELETE" });
       setExpenses((prev) => prev.filter((e) => e.id !== id));
@@ -316,6 +321,75 @@ export default function GastosPage() {
     toast.success("Archivo Excel descargado");
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+
+      // Map columns (flexible: supports Spanish or English headers)
+      const mapped = rows.map((row) => {
+        const merchant = String(row.Comercio || row.merchant || row.Merchant || row.comercio || "").trim();
+        const rawAmount = row.Monto || row.amount || row.Amount || row.monto || 0;
+        const amount = typeof rawAmount === "number" ? rawAmount : parseFloat(String(rawAmount).replace(/[^0-9.\-]/g, ""));
+        const rawCurrency = String(row.Moneda || row.currency || row.Currency || row.moneda || "COP").toUpperCase().trim();
+        const currency = rawCurrency === "USD" ? "USD" : "COP";
+        const rawDate = row.Fecha || row.date || row.Date || row.fecha || "";
+        const date = rawDate ? String(rawDate) : undefined;
+
+        // Try to match category by name
+        const catName = String(row.Categoria || row.category || row.Category || row.categoria || "").replace(/^\S+\s*/, "").trim();
+        const matchedCat = categories.find((c) => c.name.toLowerCase() === catName.toLowerCase());
+        const categoryId = matchedCat?.id || categories[0]?.id || "";
+
+        return { merchant, amount, currency, categoryId, date };
+      }).filter((r) => r.merchant && r.amount > 0);
+
+      setUploadPreview(mapped);
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleBulkUpload = async () => {
+    if (uploadPreview.length === 0) return;
+    setUploading(true);
+    try {
+      const result = await apiClient<{ created: number; errors: string[] }>("/api/expenses/bulk", {
+        method: "POST",
+        body: JSON.stringify({ expenses: uploadPreview }),
+      });
+      toast.success(`${result.created} gastos importados`);
+      if (result.errors.length > 0) {
+        toast.error(`${result.errors.length} filas con errores`);
+      }
+      setShowUploadDialog(false);
+      setUploadPreview([]);
+      setUploadFile(null);
+      fetchExpenses();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al importar");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = [
+      { Comercio: "Exito", Monto: 85000, Moneda: "COP", Categoria: "Mercado", Fecha: "2026-02-24" },
+      { Comercio: "Netflix", Monto: 15.99, Moneda: "USD", Categoria: "Entretenimiento", Fecha: "2026-02-23" },
+    ];
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Plantilla");
+    XLSX.writeFile(wb, "plantilla-gastos.xlsx");
+  };
+
   const formatAmount = (amount: number, currency: string) => {
     if (currency === "COP") {
       return `$${amount.toLocaleString("es-CO")} COP`;
@@ -370,6 +444,71 @@ export default function GastosPage() {
             <Download className="h-4 w-4 mr-1" />
             Excel
           </Button>
+          <Dialog open={showUploadDialog} onOpenChange={(open) => {
+            setShowUploadDialog(open);
+            if (!open) { setUploadPreview([]); setUploadFile(null); }
+          }}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="border-brand/20 text-brand hover:bg-brand/10 hover:text-brand-light">
+                <Upload className="h-4 w-4 mr-1" />
+                Importar
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="glass-card border-border-subtle max-h-[90vh] overflow-y-auto sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="text-text-primary">Importar gastos desde Excel</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-xs text-text-muted">
+                    Sube un archivo Excel (.xlsx) con columnas: <strong>Comercio, Monto, Moneda</strong> (COP/USD), <strong>Categoria, Fecha</strong> (opcional).
+                  </p>
+                  <button type="button" onClick={downloadTemplate} className="text-xs text-brand hover:underline">
+                    Descargar plantilla de ejemplo
+                  </button>
+                </div>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileSelect}
+                  className="block w-full text-sm text-text-muted file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand/10 file:text-brand hover:file:bg-brand/20 file:cursor-pointer"
+                />
+                {uploadPreview.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-text-secondary font-medium">
+                      {uploadPreview.length} gastos listos para importar
+                    </p>
+                    <div className="max-h-60 overflow-y-auto space-y-1.5">
+                      {uploadPreview.slice(0, 20).map((row, i) => {
+                        const cat = categories.find((c) => c.id === row.categoryId);
+                        return (
+                          <div key={i} className="flex items-center justify-between text-xs p-2 rounded-lg bg-surface-raised/50">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span>{cat?.emoji || "📦"}</span>
+                              <span className="text-text-primary truncate">{row.merchant}</span>
+                            </div>
+                            <span className="font-numbers text-text-primary shrink-0 ml-2">
+                              {row.currency === "COP" ? `$${row.amount.toLocaleString("es-CO")}` : `$${row.amount.toFixed(2)}`} {row.currency}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {uploadPreview.length > 20 && (
+                        <p className="text-xs text-text-muted text-center">...y {uploadPreview.length - 20} mas</p>
+                      )}
+                    </div>
+                    <Button
+                      onClick={handleBulkUpload}
+                      disabled={uploading}
+                      className="w-full h-11 rounded-xl bg-brand hover:bg-brand-dark text-white font-semibold"
+                    >
+                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : `Importar ${uploadPreview.length} gastos`}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
           <Dialog open={showAddDialog} onOpenChange={(open) => {
             setShowAddDialog(open);
             if (!open) {
