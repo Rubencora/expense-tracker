@@ -23,7 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Trash2, Download, Loader2 } from "lucide-react";
+import { Plus, Trash2, Download, Loader2, Split } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface Category {
@@ -41,6 +41,7 @@ interface Expense {
   amountUsd: number;
   descriptionAi: string | null;
   source: string;
+  splitType: string | null;
   createdAt: string;
   category: Category;
   space: { id: string; name: string } | null;
@@ -51,6 +52,21 @@ interface SpaceInfo {
   id: string;
   name: string;
 }
+
+interface SpaceMember {
+  userId: string;
+  name: string;
+  role: string;
+}
+
+type SplitTypeOption = "equal" | "percentage" | "exact" | "solo";
+
+const SPLIT_LABELS: Record<SplitTypeOption, string> = {
+  equal: "Partes iguales",
+  percentage: "Porcentaje",
+  exact: "Montos exactos",
+  solo: "Solo yo",
+};
 
 export default function GastosPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -68,6 +84,29 @@ export default function GastosPage() {
   const [newCurrency, setNewCurrency] = useState("COP");
   const [newCategoryId, setNewCategoryId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Split state
+  const [splitType, setSplitType] = useState<SplitTypeOption>("equal");
+  const [spaceMembers, setSpaceMembers] = useState<SpaceMember[]>([]);
+  const [percentShares, setPercentShares] = useState<Record<string, string>>({});
+  const [exactShares, setExactShares] = useState<Record<string, string>>({});
+
+  const isSharedSpace = selectedSpace && selectedSpace !== "all" && selectedSpace !== "personal";
+
+  // Fetch members when a shared space is selected for the add dialog
+  useEffect(() => {
+    if (isSharedSpace && showAddDialog) {
+      apiClient<SpaceMember[]>(`/api/spaces/${selectedSpace}/members`).then((members) => {
+        setSpaceMembers(members);
+        const initial: Record<string, string> = {};
+        members.forEach((m) => {
+          initial[m.userId] = "";
+        });
+        setPercentShares(initial);
+        setExactShares(initial);
+      });
+    }
+  }, [isSharedSpace, selectedSpace, showAddDialog]);
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
@@ -147,9 +186,31 @@ export default function GastosPage() {
         currency: newCurrency,
         categoryId: newCategoryId,
       };
-      if (selectedSpace && selectedSpace !== "all" && selectedSpace !== "personal") {
+      if (isSharedSpace) {
         expenseData.spaceId = selectedSpace;
+
+        // Build split data
+        if (splitType === "equal" || splitType === "solo") {
+          expenseData.split = { type: splitType };
+        } else if (splitType === "percentage") {
+          const shares = Object.entries(percentShares)
+            .filter(([, v]) => parseFloat(v) > 0)
+            .map(([userId, v]) => ({ userId, percentage: parseFloat(v) }));
+          const total = shares.reduce((s, sh) => s + sh.percentage, 0);
+          if (Math.abs(total - 100) > 0.01) {
+            toast.error("Los porcentajes deben sumar 100%");
+            setSubmitting(false);
+            return;
+          }
+          expenseData.split = { type: "percentage", shares };
+        } else if (splitType === "exact") {
+          const shares = Object.entries(exactShares)
+            .filter(([, v]) => parseFloat(v) > 0)
+            .map(([userId, v]) => ({ userId, amount: parseFloat(v) }));
+          expenseData.split = { type: "exact", shares };
+        }
       }
+
       await apiClient<Expense>("/api/expenses", {
         method: "POST",
         body: JSON.stringify(expenseData),
@@ -159,6 +220,7 @@ export default function GastosPage() {
       setNewMerchant("");
       setNewAmount("");
       setNewCategoryId("");
+      setSplitType("equal");
       fetchExpenses();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al crear el gasto");
@@ -199,6 +261,26 @@ export default function GastosPage() {
     shortcut: "bg-amber-accent/10 text-amber-accent border-amber-accent/20",
   };
 
+  const splitTypeStyles: Record<string, string> = {
+    EQUAL: "bg-blue-400/10 text-blue-400 border-blue-400/20",
+    PERCENTAGE: "bg-purple-400/10 text-purple-400 border-purple-400/20",
+    EXACT: "bg-amber-accent/10 text-amber-accent border-amber-accent/20",
+    SOLO: "bg-zinc-400/10 text-zinc-400 border-zinc-400/20",
+  };
+
+  const splitTypeLabels: Record<string, string> = {
+    EQUAL: "dividido",
+    PERCENTAGE: "% custom",
+    EXACT: "montos",
+    SOLO: "solo yo",
+  };
+
+  // Split preview calculations
+  const currentUser = getUser();
+  const parsedAmount = parseFloat(newAmount) || 0;
+  const memberCount = spaceMembers.length;
+  const equalShare = memberCount > 0 ? parsedAmount / memberCount : 0;
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -220,14 +302,17 @@ export default function GastosPage() {
             <Download className="h-4 w-4 mr-1" />
             Excel
           </Button>
-          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+          <Dialog open={showAddDialog} onOpenChange={(open) => {
+            setShowAddDialog(open);
+            if (!open) setSplitType("equal");
+          }}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-brand hover:bg-brand-dark text-white">
                 <Plus className="h-4 w-4 mr-1" />
                 Nuevo
               </Button>
             </DialogTrigger>
-            <DialogContent className="glass-card border-border-subtle">
+            <DialogContent className="glass-card border-border-subtle max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="text-text-primary">Registrar gasto</DialogTitle>
               </DialogHeader>
@@ -269,6 +354,110 @@ export default function GastosPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Split Section - only for shared spaces */}
+                {isSharedSpace && spaceMembers.length > 1 && (
+                  <div className="space-y-3 pt-2 border-t border-border-subtle">
+                    <div className="flex items-center gap-2">
+                      <Split className="h-4 w-4 text-text-muted" />
+                      <Label className="text-text-secondary text-xs uppercase tracking-wider">Dividir gasto</Label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["equal", "percentage", "exact", "solo"] as SplitTypeOption[]).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setSplitType(type)}
+                          className={`px-3 py-2 rounded-lg text-xs font-medium transition-all border ${
+                            splitType === type
+                              ? "bg-brand/10 text-brand border-brand/30"
+                              : "bg-surface-raised/50 text-text-muted border-border-subtle hover:border-border-subtle/80"
+                          }`}
+                        >
+                          {SPLIT_LABELS[type]}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Equal split preview */}
+                    {splitType === "equal" && parsedAmount > 0 && (
+                      <div className="bg-surface-raised/50 rounded-xl p-3 space-y-1.5">
+                        <p className="text-xs text-text-muted">
+                          Dividido entre {memberCount} miembros:
+                        </p>
+                        {spaceMembers.map((m) => (
+                          <div key={m.userId} className="flex justify-between text-xs">
+                            <span className="text-text-secondary">
+                              {m.userId === currentUser?.id ? "Tu" : m.name}
+                            </span>
+                            <span className="font-numbers text-text-primary">
+                              {formatAmount(equalShare, newCurrency)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Percentage split */}
+                    {splitType === "percentage" && (
+                      <div className="bg-surface-raised/50 rounded-xl p-3 space-y-2">
+                        {spaceMembers.map((m) => (
+                          <div key={m.userId} className="flex items-center gap-2">
+                            <span className="text-xs text-text-secondary flex-1">
+                              {m.userId === currentUser?.id ? "Tu" : m.name}
+                            </span>
+                            <Input
+                              type="number"
+                              step="any"
+                              placeholder="0"
+                              value={percentShares[m.userId] || ""}
+                              onChange={(e) => setPercentShares((prev) => ({ ...prev, [m.userId]: e.target.value }))}
+                              className="w-20 h-8 text-xs font-numbers bg-surface-overlay border-border-subtle rounded-lg text-right"
+                            />
+                            <span className="text-xs text-text-muted">%</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between text-xs pt-1 border-t border-border-subtle/50">
+                          <span className="text-text-muted">Total</span>
+                          <span className={`font-numbers font-medium ${
+                            Math.abs(Object.values(percentShares).reduce((s, v) => s + (parseFloat(v) || 0), 0) - 100) < 0.01
+                              ? "text-brand" : "text-red-accent"
+                          }`}>
+                            {Object.values(percentShares).reduce((s, v) => s + (parseFloat(v) || 0), 0).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Exact split */}
+                    {splitType === "exact" && (
+                      <div className="bg-surface-raised/50 rounded-xl p-3 space-y-2">
+                        {spaceMembers.filter((m) => m.userId !== currentUser?.id).map((m) => (
+                          <div key={m.userId} className="flex items-center gap-2">
+                            <span className="text-xs text-text-secondary flex-1">{m.name}</span>
+                            <span className="text-xs text-text-muted">$</span>
+                            <Input
+                              type="number"
+                              step="any"
+                              placeholder="0"
+                              value={exactShares[m.userId] || ""}
+                              onChange={(e) => setExactShares((prev) => ({ ...prev, [m.userId]: e.target.value }))}
+                              className="w-24 h-8 text-xs font-numbers bg-surface-overlay border-border-subtle rounded-lg text-right"
+                            />
+                            <span className="text-xs text-text-muted">{newCurrency}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {splitType === "solo" && (
+                      <p className="text-xs text-text-muted italic">
+                        El gasto queda en el espacio compartido pero no se divide.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <Button type="submit" className="w-full h-11 rounded-xl bg-brand hover:bg-brand-dark text-white font-semibold" disabled={submitting}>
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar gasto"}
                 </Button>
@@ -347,6 +536,11 @@ export default function GastosPage() {
                     <Badge variant="outline" className={`text-[10px] shrink-0 border ${sourceStyles[expense.source.toLowerCase()] || "border-border-subtle text-text-muted"}`}>
                       {expense.source.toLowerCase()}
                     </Badge>
+                    {expense.splitType && (
+                      <Badge variant="outline" className={`text-[10px] shrink-0 border ${splitTypeStyles[expense.splitType] || "border-border-subtle text-text-muted"}`}>
+                        {splitTypeLabels[expense.splitType] || expense.splitType}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-xs text-text-muted">
                     <span>{expense.user.name}</span>
@@ -358,7 +552,7 @@ export default function GastosPage() {
                     </span>
                   </div>
                   <div className="mt-2">
-                    {expense.user.id === getUser()?.id ? (
+                    {expense.user.id === currentUser?.id ? (
                       <Select value={expense.category.id} onValueChange={(val) => handleCategoryChange(expense.id, val)}>
                         <SelectTrigger className="h-7 text-xs w-fit bg-surface-overlay/50 border-border-subtle rounded-lg">
                           <SelectValue />

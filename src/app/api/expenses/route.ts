@@ -6,6 +6,17 @@ import { convertToUSD } from "@/lib/currency";
 import { Prisma } from "@/generated/prisma/client";
 import { isSpaceMember } from "@/lib/space-auth";
 
+const splitShareSchema = z.object({
+  userId: z.string(),
+  percentage: z.number().optional(),
+  amount: z.number().optional(),
+});
+
+const splitSchema = z.object({
+  type: z.enum(["equal", "percentage", "exact", "solo"]),
+  shares: z.array(splitShareSchema).optional(),
+});
+
 const createExpenseSchema = z.object({
   merchant: z.string().min(1, "Comercio requerido"),
   amount: z.number().positive("El monto debe ser positivo"),
@@ -13,6 +24,7 @@ const createExpenseSchema = z.object({
   categoryId: z.string().min(1, "Categoria requerida"),
   spaceId: z.string().optional(),
   descriptionAi: z.string().optional(),
+  split: splitSchema.nullable().optional(),
 });
 
 export const GET = authMiddleware(async (req, { userId }) => {
@@ -82,7 +94,7 @@ export const POST = authMiddleware(async (req, { userId }) => {
       );
     }
 
-    const { merchant, amount, currency, categoryId, spaceId, descriptionAi } = parsed.data;
+    const { merchant, amount, currency, categoryId, spaceId, descriptionAi, split } = parsed.data;
 
     // Verify category belongs to user
     const category = await prisma.category.findFirst({
@@ -97,6 +109,13 @@ export const POST = authMiddleware(async (req, { userId }) => {
 
     const amountUsd = await convertToUSD(amount, currency);
 
+    // Determine split type for storage
+    const splitType = split?.type === "equal" ? "EQUAL"
+      : split?.type === "percentage" ? "PERCENTAGE"
+      : split?.type === "exact" ? "EXACT"
+      : split?.type === "solo" ? "SOLO"
+      : null;
+
     const expense = await prisma.expense.create({
       data: {
         userId,
@@ -108,11 +127,62 @@ export const POST = authMiddleware(async (req, { userId }) => {
         spaceId: spaceId || null,
         descriptionAi: descriptionAi || null,
         source: "WEB",
+        splitType,
       },
       include: {
         category: { select: { id: true, name: true, emoji: true, color: true } },
       },
     });
+
+    // Create expense splits if applicable
+    if (split && split.type !== "solo" && spaceId) {
+      if (split.type === "equal") {
+        // Get all members of the space
+        const members = await prisma.spaceMember.findMany({
+          where: { spaceId },
+          select: { userId: true },
+        });
+        const otherMembers = members.filter((m) => m.userId !== userId);
+        if (otherMembers.length > 0) {
+          const shareAmount = amountUsd / members.length;
+          for (const member of otherMembers) {
+            await prisma.expenseSplit.create({
+              data: {
+                expenseId: expense.id,
+                paidByUserId: userId,
+                owedByUserId: member.userId,
+                amountUsd: Math.round(shareAmount * 100) / 100,
+              },
+            });
+          }
+        }
+      } else if (split.type === "percentage" && split.shares) {
+        for (const share of split.shares) {
+          if (share.userId === userId) continue;
+          const shareAmount = amountUsd * ((share.percentage || 0) / 100);
+          await prisma.expenseSplit.create({
+            data: {
+              expenseId: expense.id,
+              paidByUserId: userId,
+              owedByUserId: share.userId,
+              amountUsd: Math.round(shareAmount * 100) / 100,
+            },
+          });
+        }
+      } else if (split.type === "exact" && split.shares) {
+        for (const share of split.shares) {
+          if (share.userId === userId) continue;
+          await prisma.expenseSplit.create({
+            data: {
+              expenseId: expense.id,
+              paidByUserId: userId,
+              owedByUserId: share.userId,
+              amountUsd: Math.round((share.amount || 0) * 100) / 100,
+            },
+          });
+        }
+      }
+    }
 
     return NextResponse.json(expense, { status: 201 });
   } catch (error) {

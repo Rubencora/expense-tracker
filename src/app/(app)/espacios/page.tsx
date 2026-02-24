@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Users, Copy, Trash2, LogOut, Mail, Loader2 } from "lucide-react";
+import { Users, Copy, Trash2, LogOut, Mail, Loader2, Scale } from "lucide-react";
+import Link from "next/link";
 
 interface SpaceInfo {
   id: string;
@@ -253,6 +254,11 @@ export default function EspaciosPage() {
                   className="text-text-muted hover:text-text-secondary">
                   <Copy className="h-3.5 w-3.5" />
                 </Button>
+                <Link href={`/espacios/${space.id}`}>
+                  <Button variant="ghost" size="sm" className="text-text-muted hover:text-text-secondary text-xs">
+                    <Scale className="h-3.5 w-3.5 mr-1" /> Balances
+                  </Button>
+                </Link>
                 <Button variant="ghost" size="sm" onClick={() => openMembers(space.id)}
                   className="text-text-muted hover:text-text-secondary text-xs">
                   Miembros

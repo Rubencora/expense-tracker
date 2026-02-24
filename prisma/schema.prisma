@@ -24,6 +24,13 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum SplitType {
+  EQUAL
+  PERCENTAGE
+  EXACT
+  SOLO
+}
+
 enum IncomeFrequency {
   ONCE
   WEEKLY
@@ -55,6 +62,10 @@ model User {
   defaultSpace     Space?            @relation("DefaultSpace", fields: [defaultSpaceId], references: [id], onDelete: SetNull)
   sentInvitations  SpaceInvitation[] @relation("InvitedBy")
   incomes          Income[]
+  splitsPaidBy     ExpenseSplit[]    @relation("SplitPaidBy")
+  splitsOwedBy     ExpenseSplit[]    @relation("SplitOwedBy")
+  settlementsFrom  Settlement[]      @relation("SettlementFrom")
+  settlementsTo    Settlement[]      @relation("SettlementTo")
 
   @@map("users")
 }
@@ -91,9 +102,12 @@ model Expense {
   source        ExpenseSource @default(WEB)
   createdAt     DateTime      @default(now()) @map("created_at")
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  space    Space?    @relation(fields: [spaceId], references: [id], onDelete: SetNull)
-  category Category  @relation(fields: [categoryId], references: [id])
+  splitType SplitType? @map("split_type")
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space    Space?         @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  category Category       @relation(fields: [categoryId], references: [id])
+  splits   ExpenseSplit[]
 
   @@index([userId, createdAt])
   @@index([spaceId])
@@ -113,6 +127,7 @@ model Space {
   defaultForUsers User[]            @relation("DefaultSpace")
   invitations     SpaceInvitation[]
   incomes         Income[]
+  settlements     Settlement[]
 
   @@map("spaces")
 }
@@ -181,4 +196,41 @@ model Income {
 
   @@index([userId])
   @@map("incomes")
+}
+
+model ExpenseSplit {
+  id          String   @id @default(cuid())
+  expenseId   String   @map("expense_id")
+  paidByUserId String  @map("paid_by_user_id")
+  owedByUserId String  @map("owed_by_user_id")
+  amountUsd   Float    @map("amount_usd")
+  isSettled   Boolean  @default(false) @map("is_settled")
+  settledAt   DateTime? @map("settled_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  paidBy  User    @relation("SplitPaidBy", fields: [paidByUserId], references: [id], onDelete: Cascade)
+  owedBy  User    @relation("SplitOwedBy", fields: [owedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
+  @@index([owedByUserId, isSettled])
+  @@index([paidByUserId])
+  @@map("expense_splits")
+}
+
+model Settlement {
+  id         String   @id @default(cuid())
+  spaceId    String   @map("space_id")
+  fromUserId String   @map("from_user_id")
+  toUserId   String   @map("to_user_id")
+  amountUsd  Float    @map("amount_usd")
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  space    Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  fromUser User  @relation("SettlementFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User  @relation("SettlementTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId])
+  @@map("settlements")
 }
