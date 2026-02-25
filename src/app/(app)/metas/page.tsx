@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api-client";
+import { emitDataChanged } from "@/lib/data-events";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -128,6 +129,7 @@ export default function MetasPage() {
       }
       setShowAddDialog(false);
       resetForm();
+      emitDataChanged("goals");
       fetchGoals();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al guardar");
@@ -141,6 +143,7 @@ export default function MetasPage() {
     try {
       await apiClient(`/api/savings-goals/${id}`, { method: "DELETE" });
       setGoals((prev) => prev.filter((g) => g.id !== id));
+      emitDataChanged("goals");
       toast.success("Meta eliminada");
     } catch {
       toast.error("Error al eliminar la meta");
@@ -165,6 +168,7 @@ export default function MetasPage() {
       setContributeAmount("");
       setContributeCurrency("USD");
       setContributeNote("");
+      emitDataChanged("goals");
       fetchGoals();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al aportar");

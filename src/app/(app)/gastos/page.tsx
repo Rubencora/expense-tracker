@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiClient, getUser } from "@/lib/api-client";
+import { emitDataChanged } from "@/lib/data-events";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -221,6 +222,7 @@ export default function GastosPage() {
     try {
       await apiClient(`/api/expenses/${id}`, { method: "DELETE" });
       setExpenses((prev) => prev.filter((e) => e.id !== id));
+      emitDataChanged("expenses");
       toast.success("Gasto eliminado");
     } catch {
       toast.error("Error al eliminar el gasto");
@@ -236,6 +238,7 @@ export default function GastosPage() {
       setExpenses((prev) =>
         prev.map((e) => (e.id === expenseId ? { ...e, category: updated.category } : e))
       );
+      emitDataChanged("expenses");
       toast.success("Categoria actualizada");
     } catch {
       toast.error("Error al cambiar la categoria");
@@ -267,6 +270,7 @@ export default function GastosPage() {
       setExpenses((prev) =>
         prev.map((exp) => (exp.id === editingExpense.id ? { ...exp, ...updated } : exp))
       );
+      emitDataChanged("expenses");
       toast.success("Gasto actualizado");
       setEditingExpense(null);
     } catch (err) {
@@ -336,6 +340,7 @@ export default function GastosPage() {
       setNewExpenseTags([]);
       setSuggestedTagIds([]);
       setSplitType("equal");
+      emitDataChanged("expenses");
       fetchExpenses();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al crear el gasto");
@@ -413,6 +418,7 @@ export default function GastosPage() {
       setShowUploadDialog(false);
       setUploadPreview([]);
       setUploadFile(null);
+      emitDataChanged("expenses");
       fetchExpenses();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al importar");

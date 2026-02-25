@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api-client";
+import { onDataChanged } from "@/lib/data-events";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -151,6 +152,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboard();
+  }, [fetchDashboard]);
+
+  // Refetch when other pages mutate data (expenses, incomes, goals)
+  useEffect(() => {
+    return onDataChanged(() => {
+      fetchDashboard();
+    });
   }, [fetchDashboard]);
 
   const handleExportPdf = async () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api-client";
+import { emitDataChanged } from "@/lib/data-events";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -135,12 +136,14 @@ export default function IngresosPage() {
           body: JSON.stringify(data),
         });
         setIncomes((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        emitDataChanged("incomes");
         toast.success("Ingreso actualizado");
       } else {
         await apiClient<Income>("/api/incomes", {
           method: "POST",
           body: JSON.stringify(data),
         });
+        emitDataChanged("incomes");
         toast.success("Ingreso creado");
         fetchIncomes();
       }
@@ -157,6 +160,7 @@ export default function IngresosPage() {
     try {
       await apiClient(`/api/incomes/${id}`, { method: "DELETE" });
       setIncomes((prev) => prev.filter((i) => i.id !== id));
+      emitDataChanged("incomes");
       toast.success("Ingreso eliminado");
     } catch {
       toast.error("Error al eliminar el ingreso");
@@ -170,6 +174,7 @@ export default function IngresosPage() {
         body: JSON.stringify({ isActive: !income.isActive }),
       });
       setIncomes((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      emitDataChanged("incomes");
       toast.success(updated.isActive ? "Ingreso activado" : "Ingreso pausado");
     } catch {
       toast.error("Error al actualizar");
