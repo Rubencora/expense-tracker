@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { getAccessToken, getUser, clearTokens } from "@/lib/api-client";
+import { useTranslation } from "@/lib/i18n";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -18,19 +19,20 @@ import {
 import OnboardingModal from "@/components/onboarding/OnboardingModal";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/gastos", label: "Gastos", icon: Receipt },
-  { href: "/ingresos", label: "Ingresos", icon: Banknote },
-  { href: "/metas", label: "Metas", icon: Target },
-  { href: "/chat", label: "Chat IA", icon: MessageSquare },
-  { href: "/categorias", label: "Categorias", icon: Tags },
-  { href: "/espacios", label: "Espacios", icon: Users },
-  { href: "/configuracion", label: "Config", icon: Settings },
+  { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
+  { href: "/gastos", labelKey: "nav.expenses", icon: Receipt },
+  { href: "/ingresos", labelKey: "nav.income", icon: Banknote },
+  { href: "/metas", labelKey: "nav.goals", icon: Target },
+  { href: "/chat", labelKey: "nav.chat", icon: MessageSquare },
+  { href: "/categorias", labelKey: "nav.categories", icon: Tags },
+  { href: "/espacios", labelKey: "nav.spaces", icon: Users },
+  { href: "/configuracion", labelKey: "nav.settings", icon: Settings },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useTranslation();
   const [isReady, setIsReady] = useState(false);
   const [userName, setUserName] = useState("");
 
@@ -68,7 +70,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center">
             <span className="text-lg">💰</span>
           </div>
-          <h1 className="text-lg font-bold text-gradient">Mis Gastos</h1>
+          <h1 className="text-lg font-bold text-gradient">{t("app.name")}</h1>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
@@ -87,7 +89,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <item.icon className={`h-[18px] w-[18px] transition-colors ${
                   isActive ? "text-brand" : "text-text-muted group-hover:text-text-secondary"
                 }`} />
-                {item.label}
+                {t(item.labelKey)}
                 {isActive && (
                   <div className="ml-auto w-1.5 h-1.5 rounded-full bg-brand" />
                 )}
@@ -107,7 +109,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <button
               onClick={handleLogout}
               className="p-2 rounded-lg text-text-muted hover:text-red-accent hover:bg-red-accent/10 transition-all"
-              title="Cerrar sesion"
+              title={t("auth.logout")}
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -140,7 +142,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-brand" />
                   )}
                   <item.icon className={`h-5 w-5 mb-1 ${isActive ? "text-brand" : ""}`} />
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               );
             })}

@@ -46,25 +46,42 @@
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
 
-  /* Custom brand colors */
-  --color-brand: #10B981;
-  --color-brand-light: #34D399;
-  --color-brand-dark: #059669;
-  --color-brand-muted: rgba(16, 185, 129, 0.12);
-  --color-surface: #111318;
-  --color-surface-raised: #191C24;
-  --color-surface-overlay: #1E222B;
-  --color-text-primary: #F1F3F7;
-  --color-text-secondary: #8B93A7;
-  --color-text-muted: #5A6178;
-  --color-border-subtle: rgba(255, 255, 255, 0.06);
-  --color-border-default: rgba(255, 255, 255, 0.1);
-  --color-amber-accent: #F59E0B;
-  --color-red-accent: #EF4444;
+  /* Custom brand colors - resolved via CSS vars for theme switching */
+  --color-brand: var(--theme-brand);
+  --color-brand-light: var(--theme-brand-light);
+  --color-brand-dark: var(--theme-brand-dark);
+  --color-brand-muted: var(--theme-brand-muted);
+  --color-surface: var(--theme-surface);
+  --color-surface-raised: var(--theme-surface-raised);
+  --color-surface-overlay: var(--theme-surface-overlay);
+  --color-text-primary: var(--theme-text-primary);
+  --color-text-secondary: var(--theme-text-secondary);
+  --color-text-muted: var(--theme-text-muted);
+  --color-border-subtle: var(--theme-border-subtle);
+  --color-border-default: var(--theme-border-default);
+  --color-amber-accent: var(--theme-amber-accent);
+  --color-red-accent: var(--theme-red-accent);
 }
 
 :root {
   --radius: 0.75rem;
+}
+
+.dark {
+  --theme-brand: #10B981;
+  --theme-brand-light: #34D399;
+  --theme-brand-dark: #059669;
+  --theme-brand-muted: rgba(16, 185, 129, 0.12);
+  --theme-surface: #111318;
+  --theme-surface-raised: #191C24;
+  --theme-surface-overlay: #1E222B;
+  --theme-text-primary: #F1F3F7;
+  --theme-text-secondary: #8B93A7;
+  --theme-text-muted: #5A6178;
+  --theme-border-subtle: rgba(255, 255, 255, 0.06);
+  --theme-border-default: rgba(255, 255, 255, 0.1);
+  --theme-amber-accent: #F59E0B;
+  --theme-red-accent: #EF4444;
   --background: #0B0D12;
   --foreground: #F1F3F7;
   --card: #141720;
@@ -98,6 +115,54 @@
   --sidebar-ring: #10B981;
 }
 
+.light {
+  --theme-brand: #059669;
+  --theme-brand-light: #10B981;
+  --theme-brand-dark: #047857;
+  --theme-brand-muted: rgba(5, 150, 105, 0.1);
+  --theme-surface: #F1F5F9;
+  --theme-surface-raised: #FFFFFF;
+  --theme-surface-overlay: #E2E8F0;
+  --theme-text-primary: #111827;
+  --theme-text-secondary: #475569;
+  --theme-text-muted: #94A3B8;
+  --theme-border-subtle: rgba(0, 0, 0, 0.06);
+  --theme-border-default: rgba(0, 0, 0, 0.1);
+  --theme-amber-accent: #D97706;
+  --theme-red-accent: #DC2626;
+  --background: #F8FAFB;
+  --foreground: #111827;
+  --card: #FFFFFF;
+  --card-foreground: #111827;
+  --popover: #FFFFFF;
+  --popover-foreground: #111827;
+  --primary: #059669;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #334155;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #F1F5F9;
+  --accent-foreground: #111827;
+  --destructive: #DC2626;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: rgba(0, 0, 0, 0.08);
+  --ring: #059669;
+  --chart-1: #059669;
+  --chart-2: #2563EB;
+  --chart-3: #D97706;
+  --chart-4: #7C3AED;
+  --chart-5: #DC2626;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #334155;
+  --sidebar-primary: #059669;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F1F5F9;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: rgba(0, 0, 0, 0.06);
+  --sidebar-ring: #059669;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -114,28 +179,47 @@
   font-variant-numeric: tabular-nums;
 }
 
-.glass-card {
+.dark .glass-card {
   background: rgba(20, 23, 32, 0.7);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
+.light .glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
 
 .glass-card-hover {
   transition: all 0.2s ease;
 }
-.glass-card-hover:hover {
+.dark .glass-card-hover:hover {
   background: rgba(26, 29, 38, 0.8);
   border-color: rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
 }
-
-.glow-brand {
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15), 0 0 60px rgba(16, 185, 129, 0.05);
+.light .glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-.glow-brand-sm {
+.dark .glow-brand {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15), 0 0 60px rgba(16, 185, 129, 0.05);
+}
+.light .glow-brand {
+  box-shadow: 0 0 20px rgba(5, 150, 105, 0.12), 0 0 60px rgba(5, 150, 105, 0.04);
+}
+
+.dark .glow-brand-sm {
   box-shadow: 0 0 12px rgba(16, 185, 129, 0.1);
+}
+.light .glow-brand-sm {
+  box-shadow: 0 0 12px rgba(5, 150, 105, 0.08);
 }
 
 .text-gradient {
@@ -219,24 +303,41 @@
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-::-webkit-scrollbar-thumb {
+.dark ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
+.dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
 }
 
 /* ── Mesh gradient background ── */
-.bg-mesh {
+.dark .bg-mesh {
   background:
     radial-gradient(ellipse at 20% 0%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 100%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
     #0B0D12;
 }
+.light .bg-mesh {
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(5, 150, 105, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(37, 99, 235, 0.04) 0%, transparent 50%),
+    #F8FAFB;
+}
 
 /* ── Selection ── */
-::selection {
+.dark ::selection {
   background: rgba(16, 185, 129, 0.3);
   color: #F1F3F7;
+}
+.light ::selection {
+  background: rgba(5, 150, 105, 0.2);
+  color: #111827;
 }
