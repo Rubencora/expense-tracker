@@ -1,6 +1,10 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_APP_URL: https://expenses.byruben.io
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: BI9yxsBDrLux4tpkhis01uPaF6ZPIlnbGEH1nxOvnsLjenXtip-8HsYVDRFCh46RjbyTeSq-K27bo_awIG-aLmU
     container_name: expense-tracker
     restart: unless-stopped
     ports:
