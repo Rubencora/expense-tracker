@@ -31,11 +31,14 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 interface DashboardData {
+  total: number;
   totalUsd: number;
+  currency: "COP" | "USD";
+  copRate: number;
   count: number;
   avgDaily: number;
   daysWithExpenses: number;
-  biggestExpense: { merchant: string; amountUsd: number } | null;
+  biggestExpense: { merchant: string; amount: number } | null;
   topCategory: {
     id: string;
     name: string;
@@ -113,6 +116,7 @@ export default function DashboardPage() {
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);
   const [selectedSpace, setSelectedSpace] = useState("all");
   const [period, setPeriod] = useState("month");
+  const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">("USD");
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -120,6 +124,7 @@ export default function DashboardPage() {
       const params = new URLSearchParams();
       if (selectedSpace !== "all") params.set("spaceId", selectedSpace);
       params.set("period", period);
+      params.set("currency", displayCurrency);
 
       const [dashResult, cfResult, atsResult] = await Promise.all([
         apiClient<DashboardData>(`/api/dashboard?${params.toString()}`),
@@ -136,7 +141,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedSpace, period]);
+  }, [selectedSpace, period, displayCurrency]);
 
   useEffect(() => {
     apiClient<{ spaces: SpaceInfo[] }>("/api/spaces").then((res) => {
@@ -426,6 +431,13 @@ export default function DashboardPage() {
     }
   };
 
+  const cur = displayCurrency;
+  const copRate = data?.copRate || 4200;
+  const toCur = (usd: number) => cur === "COP" ? Math.round(usd * copRate) : Math.round(usd * 100) / 100;
+  const fmtAmount = (v: number) =>
+    cur === "COP" ? `$${v.toLocaleString("es-CO")}` : `$${v.toFixed(2)}`;
+  const fmtUsd = (usd: number) => fmtAmount(toCur(usd));
+
   if (loading) return <DashboardSkeleton />;
 
   if (!data) {
@@ -480,6 +492,13 @@ export default function DashboardPage() {
             <SelectItem value="all">Todo el tiempo</SelectItem>
           </SelectContent>
         </Select>
+
+        <Tabs value={displayCurrency} onValueChange={(v) => setDisplayCurrency(v as "USD" | "COP")}>
+          <TabsList className="bg-surface-raised border border-border-subtle">
+            <TabsTrigger value="USD" className="data-[state=active]:bg-brand/10 data-[state=active]:text-brand text-xs">USD</TabsTrigger>
+            <TabsTrigger value="COP" className="data-[state=active]:bg-brand/10 data-[state=active]:text-brand text-xs">COP</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* Cash Flow Section */}
@@ -495,8 +514,8 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Balance</span>
               </div>
               <p className={`text-2xl font-bold font-numbers ${cashFlow.balance >= 0 ? "text-brand" : "text-red-accent"}`}>
-                ${cashFlow.balance.toFixed(2)}
-                <span className="text-xs font-normal text-text-muted ml-1.5">USD</span>
+                {fmtUsd(cashFlow.balance)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">
                 {cashFlow.savingsRate > 0 ? `${cashFlow.savingsRate.toFixed(0)}% ahorro` : "Sin ahorro"}
@@ -511,8 +530,8 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Disponible/dia</span>
               </div>
               <p className={`text-2xl font-bold font-numbers ${cashFlow.dailyAvailable >= 0 ? "text-text-primary" : "text-red-accent"}`}>
-                ${cashFlow.dailyAvailable.toFixed(2)}
-                <span className="text-xs font-normal text-text-muted ml-1.5">USD</span>
+                {fmtUsd(cashFlow.dailyAvailable)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">Resto del mes</p>
             </div>
@@ -525,8 +544,8 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Ingresos</span>
               </div>
               <p className="text-2xl font-bold font-numbers text-text-primary">
-                ${cashFlow.monthlyIncome.toFixed(2)}
-                <span className="text-xs font-normal text-text-muted ml-1.5">USD/mes</span>
+                {fmtUsd(cashFlow.monthlyIncome)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">{cur}/mes</span>
               </p>
               <div className="mt-2 w-full bg-surface-overlay rounded-full h-1.5">
                 <div
@@ -547,8 +566,8 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Mes anterior</span>
               </div>
               <p className="text-2xl font-bold font-numbers text-text-primary">
-                ${cashFlow.lastMonthExpenses.toFixed(2)}
-                <span className="text-xs font-normal text-text-muted ml-1.5">USD</span>
+                {fmtUsd(cashFlow.lastMonthExpenses)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">
                 {(cashFlow.lastMonthRatio * 100).toFixed(0)}% de ingresos
@@ -597,11 +616,11 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Disponible</span>
               </div>
               <p className={`text-2xl font-bold font-numbers ${availableData.availableToSpend >= 0 ? "text-brand" : "text-red-accent"}`}>
-                ${availableData.availableToSpend.toFixed(2)}
-                <span className="text-xs font-normal text-text-muted ml-1.5">USD</span>
+                {fmtUsd(availableData.availableToSpend)}
+                <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">
-                ${availableData.dailyBudget.toFixed(2)}/dia · {availableData.daysRemaining}d restantes
+                {fmtUsd(availableData.dailyBudget)}/dia · {availableData.daysRemaining}d restantes
               </p>
             </div>
 
@@ -613,11 +632,11 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Ahorrado</span>
               </div>
               <p className="text-2xl font-bold font-numbers text-text-primary">
-                ${availableData.monthlySavings.toFixed(2)}
+                {fmtUsd(availableData.monthlySavings)}
                 <span className="text-xs font-normal text-text-muted ml-1.5">este mes</span>
               </p>
               <p className="text-xs text-text-muted mt-1">
-                ${availableData.totalSavingsCommitted.toFixed(2)} por completar
+                {fmtUsd(availableData.totalSavingsCommitted)} por completar
               </p>
             </div>
 
@@ -639,7 +658,7 @@ export default function DashboardPage() {
                     />
                   </div>
                   <p className="text-xs font-numbers text-text-muted">
-                    ${goal.currentAmountUsd.toFixed(2)} / ${goal.targetAmountUsd.toFixed(2)}
+                    {fmtUsd(goal.currentAmountUsd)} / {fmtUsd(goal.targetAmountUsd)}
                   </p>
                 </Link>
               );
@@ -652,10 +671,10 @@ export default function DashboardPage() {
       <div className="space-y-4">
         <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Gastos del periodo</h2>
         <div className="grid grid-cols-2 gap-4 stagger-children">
-          <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total gastado" value={`$${data.totalUsd.toFixed(2)}`} unit="USD" detail={`${data.count} gastos`} accent="brand" />
-          <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Promedio diario" value={`$${data.avgDaily.toFixed(2)}`} unit="USD" detail={`${data.daysWithExpenses} dias con gastos`} accent="blue" />
-          <StatCard icon={<ArrowUpRight className="h-4 w-4" />} label="Mayor gasto" value={data.biggestExpense ? `$${data.biggestExpense.amountUsd.toFixed(2)}` : "\u2014"} detail={data.biggestExpense?.merchant || "Sin gastos"} accent="amber" />
-          <StatCard icon={<Star className="h-4 w-4" />} label="Categoria top" value={data.topCategory ? `${data.topCategory.emoji} ${data.topCategory.name}` : "\u2014"} detail={data.topCategory ? `$${data.topCategory.total.toFixed(2)} USD (${data.topCategory.count})` : "Sin datos"} accent="purple" />
+          <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total gastado" value={fmtAmount(data.total)} unit={cur} detail={`${data.count} gastos`} accent="brand" />
+          <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Promedio diario" value={fmtAmount(data.avgDaily)} unit={cur} detail={`${data.daysWithExpenses} dias con gastos`} accent="blue" />
+          <StatCard icon={<ArrowUpRight className="h-4 w-4" />} label="Mayor gasto" value={data.biggestExpense ? fmtAmount(data.biggestExpense.amount) : "\u2014"} detail={data.biggestExpense?.merchant || "Sin gastos"} accent="amber" />
+          <StatCard icon={<Star className="h-4 w-4" />} label="Categoria top" value={data.topCategory ? `${data.topCategory.emoji} ${data.topCategory.name}` : "\u2014"} detail={data.topCategory ? `${fmtAmount(data.topCategory.total)} ${cur} (${data.topCategory.count})` : "Sin datos"} accent="purple" />
         </div>
       </div>
 
@@ -684,7 +703,7 @@ export default function DashboardPage() {
                     return new Date(Number(y), Number(mo) - 1).toLocaleDateString("es-CO", { month: "long", year: "numeric" });
                   }}
                   formatter={(value, name) => [
-                    `$${Number(value ?? 0).toFixed(2)} USD`,
+                    `${fmtUsd(Number(value ?? 0))} ${cur}`,
                     name === "income" ? "Ingresos" : name === "expenses" ? "Gastos" : "Balance",
                   ]}
                   contentStyle={TOOLTIP_STYLE}
@@ -717,7 +736,7 @@ export default function DashboardPage() {
                       <Cell key={entry.id} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => `$${Number(value ?? 0).toFixed(2)} USD`}
+                  <Tooltip formatter={(value) => `${fmtAmount(Number(value ?? 0))} ${cur}`}
                     contentStyle={TOOLTIP_STYLE} />
                 </PieChart>
               </ResponsiveContainer>
@@ -733,7 +752,7 @@ export default function DashboardPage() {
                   <YAxis fontSize={11} stroke="#5A6178" tickLine={false} axisLine={false} />
                   <Tooltip
                     labelFormatter={(d) => new Date(String(d) + "T12:00:00").toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" })}
-                    formatter={(value) => [`$${Number(value ?? 0).toFixed(2)} USD`, "Total"]}
+                    formatter={(value) => [`${fmtAmount(Number(value ?? 0))} ${cur}`, "Total"]}
                     contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="total" fill="#10B981" radius={[6, 6, 0, 0]} />
                 </BarChart>
@@ -760,7 +779,7 @@ export default function DashboardPage() {
                       <Cell key={entry.id} fill={USER_COLORS[index % USER_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => `$${Number(value ?? 0).toFixed(2)} USD`}
+                  <Tooltip formatter={(value) => `${fmtAmount(Number(value ?? 0))} ${cur}`}
                     contentStyle={TOOLTIP_STYLE} />
                 </PieChart>
               </ResponsiveContainer>
@@ -773,7 +792,7 @@ export default function DashboardPage() {
                     <span className="text-sm font-medium text-text-primary">{user.name}</span>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold font-numbers text-text-primary">${user.total.toFixed(2)}</p>
+                    <p className="text-sm font-bold font-numbers text-text-primary">{fmtAmount(user.total)}</p>
                     <p className="text-xs text-text-muted">{user.count} gastos</p>
                   </div>
                 </div>

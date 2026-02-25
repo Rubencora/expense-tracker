@@ -23,7 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Trash2, Download, Upload, Loader2, Split } from "lucide-react";
+import { Plus, Trash2, Download, Upload, Loader2, Split, Pencil } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface Category {
@@ -100,6 +100,14 @@ export default function GastosPage() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<{ merchant: string; amount: number; currency: string; categoryId: string; date?: string }[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+
+  // Edit state
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editMerchant, setEditMerchant] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editCurrency, setEditCurrency] = useState("COP");
+  const [editCategoryId, setEditCategoryId] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   // Split state
   const [splitType, setSplitType] = useState<SplitTypeOption>("equal");
@@ -231,6 +239,40 @@ export default function GastosPage() {
       toast.success("Categoria actualizada");
     } catch {
       toast.error("Error al cambiar la categoria");
+    }
+  };
+
+  const openEditDialog = (expense: Expense) => {
+    setEditingExpense(expense);
+    setEditMerchant(expense.merchant);
+    setEditAmount(String(expense.amount));
+    setEditCurrency(expense.currency);
+    setEditCategoryId(expense.category.id);
+  };
+
+  const handleEditExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense) return;
+    setEditSubmitting(true);
+    try {
+      const updated = await apiClient<Expense>(`/api/expenses/${editingExpense.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          merchant: editMerchant,
+          amount: parseFloat(editAmount),
+          currency: editCurrency,
+          categoryId: editCategoryId,
+        }),
+      });
+      setExpenses((prev) =>
+        prev.map((exp) => (exp.id === editingExpense.id ? { ...exp, ...updated } : exp))
+      );
+      toast.success("Gasto actualizado");
+      setEditingExpense(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al actualizar");
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -851,18 +893,79 @@ export default function GastosPage() {
                       ${expense.amountUsd.toFixed(2)} USD
                     </p>
                   )}
-                  <button
-                    onClick={() => handleDelete(expense.id)}
-                    className="mt-2 p-1.5 rounded-lg text-text-muted hover:text-red-accent hover:bg-red-accent/10 transition-all"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {expense.user.id === currentUser?.id && (
+                    <div className="flex gap-1 mt-2 justify-end">
+                      <button
+                        onClick={() => openEditDialog(expense)}
+                        className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-all"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(expense.id)}
+                        className="p-1.5 rounded-lg text-text-muted hover:text-red-accent hover:bg-red-accent/10 transition-all"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingExpense} onOpenChange={(open) => { if (!open) setEditingExpense(null); }}>
+        <DialogContent className="glass-card border-border-subtle max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-text-primary">Editar gasto</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditExpense} className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-text-secondary text-xs uppercase tracking-wider">Comercio</Label>
+              <Input value={editMerchant} onChange={(e) => setEditMerchant(e.target.value)} required
+                className="bg-surface-raised/50 border-border-subtle h-11 rounded-xl" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-text-secondary text-xs uppercase tracking-wider">Monto</Label>
+                <Input type="number" step="any" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} required
+                  className="bg-surface-raised/50 border-border-subtle h-11 rounded-xl font-numbers" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-text-secondary text-xs uppercase tracking-wider">Moneda</Label>
+                <Select value={editCurrency} onValueChange={setEditCurrency}>
+                  <SelectTrigger className="bg-surface-raised/50 border-border-subtle h-11 rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-surface-overlay border-border-subtle">
+                    <SelectItem value="COP">COP</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-text-secondary text-xs uppercase tracking-wider">Categoria</Label>
+              <Select value={editCategoryId} onValueChange={setEditCategoryId}>
+                <SelectTrigger className="bg-surface-raised/50 border-border-subtle h-11 rounded-xl">
+                  <SelectValue placeholder="Selecciona categoria" />
+                </SelectTrigger>
+                <SelectContent className="bg-surface-overlay border-border-subtle">
+                  {categories.filter((c) => c.id).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.emoji} {c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" className="w-full h-11 rounded-xl bg-brand hover:bg-brand-dark text-white font-semibold" disabled={editSubmitting}>
+              {editSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar cambios"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

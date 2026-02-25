@@ -46,7 +46,6 @@ export default function EspaciosPage() {
   const [loading, setLoading] = useState(true);
   const [defaultSpaceId, setDefaultSpaceId] = useState<string | null>(null);
   const [newSpaceName, setNewSpaceName] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [membersDialog, setMembersDialog] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -80,18 +79,6 @@ export default function EspaciosPage() {
       fetchSpaces();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al crear el espacio");
-    }
-  };
-
-  const handleJoinSpace = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const result = await apiClient<{ message: string }>("/api/spaces/join", { method: "POST", body: JSON.stringify({ inviteCode }) });
-      toast.success(result.message);
-      setInviteCode("");
-      fetchSpaces();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error al unirse");
     }
   };
 
@@ -282,25 +269,14 @@ export default function EspaciosPage() {
         ))}
       </div>
 
-      {/* Create & Join */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="glass-card rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-text-primary mb-4">Crear espacio compartido</h3>
-          <form onSubmit={handleCreateSpace} className="flex gap-2">
-            <Input value={newSpaceName} onChange={(e) => setNewSpaceName(e.target.value)} placeholder="Nombre del espacio" required
-              className="bg-surface-raised/50 border-border-subtle h-10 rounded-xl" />
-            <Button type="submit" className="bg-brand hover:bg-brand-dark text-white shrink-0">Crear</Button>
-          </form>
-        </div>
-
-        <div className="glass-card rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-text-primary mb-4">Unirse a un espacio</h3>
-          <form onSubmit={handleJoinSpace} className="flex gap-2">
-            <Input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Codigo de invitacion" required
-              className="bg-surface-raised/50 border-border-subtle h-10 rounded-xl font-mono" />
-            <Button type="submit" variant="outline" className="border-border-subtle text-text-secondary hover:bg-surface-overlay shrink-0">Unirse</Button>
-          </form>
-        </div>
+      {/* Create Space */}
+      <div className="glass-card rounded-2xl p-6">
+        <h3 className="text-sm font-semibold text-text-primary mb-4">Crear espacio compartido</h3>
+        <form onSubmit={handleCreateSpace} className="flex gap-2">
+          <Input value={newSpaceName} onChange={(e) => setNewSpaceName(e.target.value)} placeholder="Nombre del espacio" required
+            className="bg-surface-raised/50 border-border-subtle h-10 rounded-xl" />
+          <Button type="submit" className="bg-brand hover:bg-brand-dark text-white shrink-0">Crear</Button>
+        </form>
       </div>
 
       {/* Members Dialog */}

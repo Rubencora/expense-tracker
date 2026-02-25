@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSpaceMember } from "@/lib/space-auth";
+import { fetchExchangeRate } from "@/lib/currency";
 
 export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
   const { searchParams } = new URL(req.url);
   const spaceId = searchParams.get("spaceId");
   const period = searchParams.get("period") || "month";
   const categoryId = searchParams.get("categoryId");
+  const displayCurrency = searchParams.get("currency") === "COP" ? "COP" : "USD";
 
   // Calculate date range
   const now = new Date();
@@ -61,6 +63,10 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
     },
     orderBy: { createdAt: "desc" },
   });
+
+  // Get exchange rate for currency conversion
+  const copRate = displayCurrency === "COP" ? await fetchExchangeRate() : 1;
+  const toDisplay = (usd: number) => displayCurrency === "COP" ? Math.round(usd * copRate) : Math.round(usd * 100) / 100;
 
   // Calculations
   const totalUsd = expenses.reduce((sum, e) => sum + e.amountUsd, 0);
@@ -149,17 +155,41 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
     );
   }
 
+  // Convert all amounts to display currency
+  const convertedCategoryDistribution = categoryDistribution.map((c) => ({
+    ...c,
+    total: toDisplay(c.total),
+  }));
+  const convertedDailyTrend = dailyTrend.map((d) => ({
+    ...d,
+    total: toDisplay(d.total),
+  }));
+  const convertedUserDistribution = userDistribution.map((u) => ({
+    ...u,
+    total: toDisplay(u.total),
+  }));
+  const convertedTopCategory = topCategory
+    ? { ...topCategory, total: toDisplay(topCategory.total) }
+    : null;
+
+  // Always return the COP rate so frontend can convert other amounts (cashflow etc.)
+  const rateForClient = displayCurrency === "COP" ? copRate : await fetchExchangeRate();
+
   return NextResponse.json({
-    totalUsd: Math.round(totalUsd * 100) / 100,
+    total: toDisplay(totalUsd),
+    currency: displayCurrency,
+    copRate: rateForClient,
     count,
-    avgDaily: Math.round(avgDaily * 100) / 100,
+    avgDaily: toDisplay(avgDaily),
     daysWithExpenses,
     biggestExpense: biggest
-      ? { merchant: biggest.merchant, amountUsd: biggest.amountUsd }
+      ? { merchant: biggest.merchant, amount: toDisplay(biggest.amountUsd) }
       : null,
-    topCategory,
-    categoryDistribution,
-    dailyTrend,
-    ...(isSharedSpace ? { userDistribution } : {}),
+    topCategory: convertedTopCategory,
+    categoryDistribution: convertedCategoryDistribution,
+    dailyTrend: convertedDailyTrend,
+    ...(isSharedSpace ? { userDistribution: convertedUserDistribution } : {}),
+    // Keep legacy fields for backwards compat
+    totalUsd: Math.round(totalUsd * 100) / 100,
   });
 });

@@ -39,7 +39,7 @@ export function parseCurrency(input: string): ParsedCurrency {
 let cachedRate: { rate: number; fetchedAt: number } | null = null;
 const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour
 
-async function fetchExchangeRate(): Promise<number> {
+export async function fetchExchangeRate(): Promise<number> {
   if (cachedRate && Date.now() - cachedRate.fetchedAt < CACHE_DURATION_MS) {
     return cachedRate.rate;
   }
