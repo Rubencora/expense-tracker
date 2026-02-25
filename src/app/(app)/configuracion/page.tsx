@@ -24,14 +24,8 @@ interface UserProfile {
   apiToken: string;
   telegramChatId: string | null;
   defaultCurrency: string;
-  defaultSpaceId: string | null;
   timezone: string;
   onboardingCompleted: boolean;
-}
-
-interface SpaceInfo {
-  id: string;
-  name: string;
 }
 
 interface WebhookItem {
@@ -61,7 +55,6 @@ export default function ConfiguracionPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [webhookAdding, setWebhookAdding] = useState(false);
-  const [spaces, setSpaces] = useState<SpaceInfo[]>([]);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -144,11 +137,7 @@ export default function ConfiguracionPage() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => {
-    fetchProfile();
-    fetchWebhooks();
-    apiClient<{ spaces: SpaceInfo[] }>("/api/spaces").then((res) => setSpaces(res.spaces)).catch(() => {});
-  }, [fetchProfile, fetchWebhooks]);
+  useEffect(() => { fetchProfile(); fetchWebhooks(); }, [fetchProfile, fetchWebhooks]);
 
   const handleSaveName = async () => {
     try {
@@ -171,15 +160,6 @@ export default function ConfiguracionPage() {
       setProfile((p) => (p ? { ...p, timezone: tz } : p));
       toast.success("Zona horaria actualizada");
     } catch { toast.error("Error al cambiar la zona horaria"); }
-  };
-
-  const handleDefaultSpaceChange = async (spaceId: string) => {
-    const value = spaceId === "personal" ? null : spaceId;
-    try {
-      await apiClient("/api/users/me", { method: "PATCH", body: JSON.stringify({ defaultSpaceId: value }) });
-      setProfile((p) => (p ? { ...p, defaultSpaceId: value } : p));
-      toast.success("Espacio por defecto actualizado");
-    } catch { toast.error("Error al cambiar el espacio"); }
   };
 
   const handleRegenerateToken = async () => {
@@ -401,24 +381,6 @@ export default function ConfiguracionPage() {
             </SelectContent>
           </Select>
         </div>
-        {spaces.length > 0 && (
-          <>
-            <div className="h-px bg-border-subtle" />
-            <div className="space-y-2">
-              <Label className="text-text-secondary text-xs uppercase tracking-wider">Espacio por defecto</Label>
-              <p className="text-xs text-text-muted">Los gastos desde Shortcuts y Telegram se asignan a este espacio</p>
-              <Select value={profile.defaultSpaceId || "personal"} onValueChange={handleDefaultSpaceChange}>
-                <SelectTrigger className="w-60 bg-surface-raised/50 border-border-subtle h-10 rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-surface-overlay border-border-subtle">
-                  <SelectItem value="personal">Personal (sin espacio)</SelectItem>
-                  {spaces.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
       </div>
 
       {/* Push Notifications */}
