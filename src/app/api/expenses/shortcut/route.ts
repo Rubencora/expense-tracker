@@ -24,12 +24,33 @@ function checkRateLimit(token: string): boolean {
   return true;
 }
 
+export async function GET() {
+  return NextResponse.json({
+    status: "ok",
+    endpoint: "expenses/shortcut",
+    timestamp: new Date().toISOString(),
+    message: "POST to this endpoint with Authorization: Bearer <token> and JSON body { merchant, amount, currency }",
+  });
+}
+
 export async function POST(req: NextRequest) {
+  console.log("[SHORTCUT] Request received:", {
+    method: req.method,
+    url: req.url,
+    hasAuth: !!req.headers.get("authorization"),
+    contentType: req.headers.get("content-type"),
+    timestamp: new Date().toISOString(),
+  });
+
   try {
     // Auth by API token
     const authResult = await authenticateByApiToken(req);
-    if (authResult instanceof NextResponse) return authResult;
+    if (authResult instanceof NextResponse) {
+      console.log("[SHORTCUT] Auth failed - returning", authResult.status);
+      return authResult;
+    }
     const { userId } = authResult;
+    console.log("[SHORTCUT] Auth OK, userId:", userId);
 
     // Rate limit
     const token = req.headers.get("authorization")?.slice(7) || "";
@@ -43,12 +64,15 @@ export async function POST(req: NextRequest) {
     let body: Record<string, unknown>;
     try {
       body = await req.json();
-    } catch {
+    } catch (parseErr) {
+      console.error("[SHORTCUT] JSON parse error:", parseErr);
       return NextResponse.json(
         { error: "JSON invalido en el body" },
         { status: 400 }
       );
     }
+
+    console.log("[SHORTCUT] Raw body:", JSON.stringify(body));
 
     // iOS Shortcuts adds leading/trailing spaces to JSON keys — normalize them
     const normalized: Record<string, unknown> = {};
@@ -56,10 +80,14 @@ export async function POST(req: NextRequest) {
       normalized[key.trim().toLowerCase()] = value;
     }
 
+    console.log("[SHORTCUT] Normalized:", JSON.stringify(normalized));
+
     // Lenient extraction
     const merchant = String(normalized.merchant || "").trim();
     const rawAmount = normalized.amount;
     const rawCurrency = normalized.currency;
+
+    console.log("[SHORTCUT] Parsed fields:", { merchant, rawAmount, rawCurrency, typeOfAmount: typeof rawAmount });
 
     if (!merchant) {
       return NextResponse.json(
@@ -90,7 +118,10 @@ export async function POST(req: NextRequest) {
       currency = parsedCurrency.currency;
     }
 
+    console.log("[SHORTCUT] Final parsed:", { amount, currency });
+
     if (isNaN(amount) || amount <= 0) {
+      console.log("[SHORTCUT] Invalid amount, rejecting");
       return NextResponse.json(
         { error: "Datos invalidos", details: `amount invalido: ${String(rawAmount)}` },
         { status: 400 }
@@ -132,6 +163,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    console.log("[SHORTCUT] Created expense:", {
+      id: expense.id,
+      merchant: expense.merchant,
+      amount: expense.amount,
+      currency: expense.currency,
+      category: expense.category?.name,
+    });
+
     return NextResponse.json({
       success: true,
       expense: {
@@ -145,7 +184,7 @@ export async function POST(req: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
-    console.error("Shortcut expense error:", error);
+    console.error("[SHORTCUT] Error:", error);
     return NextResponse.json(
       { error: "Error al registrar el gasto" },
       { status: 500 }
