@@ -6,6 +6,66 @@ function getResend() {
   return _resend;
 }
 
+export async function sendPasswordResetEmail({
+  to,
+  resetUrl,
+}: {
+  to: string;
+  resetUrl: string;
+}) {
+  await getResend().emails.send({
+    from: "MisGastos <noreply@byruben.io>",
+    to,
+    subject: "Recupera tu contrasena - MisGastos",
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #0B0E14; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #0B0E14; padding: 40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width: 480px; width: 100%;">
+        <tr><td align="center" style="padding-bottom: 32px;">
+          <div style="display: inline-block; background: rgba(16,185,129,0.1); border-radius: 16px; padding: 12px 20px;">
+            <span style="font-size: 24px; font-weight: 700; color: #10B981; letter-spacing: -0.5px;">MisGastos</span>
+          </div>
+        </td></tr>
+        <tr><td>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #131720; border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; overflow: hidden;">
+            <tr><td style="height: 3px; background: linear-gradient(90deg, #10B981, #059669);"></td></tr>
+            <tr><td style="padding: 40px 36px;">
+              <p style="margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #F1F3F7; line-height: 1.3;">
+                Recuperar contrasena
+              </p>
+              <p style="margin: 0 0 28px; font-size: 15px; color: #8B93A7; line-height: 1.6;">
+                Recibimos una solicitud para restablecer la contrasena de tu cuenta. Haz clic en el boton para crear una nueva contrasena.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom: 28px;">
+                <tr><td>
+                  <a href="${resetUrl}" style="display: inline-block; background: #10B981; color: #000; padding: 14px 36px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px; letter-spacing: -0.2px;">
+                    Restablecer contrasena
+                  </a>
+                </td></tr>
+              </table>
+              <div style="height: 1px; background: rgba(255,255,255,0.06); margin-bottom: 20px;"></div>
+              <p style="margin: 0; font-size: 13px; color: #5A6178; line-height: 1.5;">
+                Este enlace expira en <strong style="color: #8B93A7;">1 hora</strong>. Si no solicitaste este cambio, puedes ignorar este email.
+              </p>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding-top: 28px; text-align: center;">
+          <p style="margin: 0; font-size: 11px; color: #2A2E3B;">MisGastos &middot; expenses.byruben.io</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+    `,
+  });
+}
+
 export async function sendSpaceInvitationEmail({
   to,
   inviterName,

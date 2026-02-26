@@ -90,7 +90,19 @@
     "shortcutMethod": "Method:",
     "shortcutBody": "Body (JSON): use transaction variables:",
     "shortcutBodyHint": "Tap each field and select the corresponding magic variable from the transaction",
-    "shortcutTroubleshoot": "If the automation doesn't run: verify that \"Run Immediately\" is active and that the card you used is selected in the trigger."
+    "shortcutTroubleshoot": "If the automation doesn't run: verify that \"Run Immediately\" is active and that the card you used is selected in the trigger.",
+    "changePassword": "Change password",
+    "changePasswordDesc": "Update your account password",
+    "currentPassword": "Current password",
+    "currentPasswordPlaceholder": "Your current password",
+    "newPassword": "New password",
+    "newPasswordPlaceholder": "Minimum 6 characters",
+    "confirmNewPassword": "Confirm new password",
+    "confirmNewPasswordPlaceholder": "Repeat new password",
+    "changePasswordBtn": "Change password",
+    "passwordChanged": "Password updated successfully",
+    "passwordsMismatch": "Passwords do not match",
+    "passwordTooShort": "Password must be at least 6 characters"
   },
   "common": {
     "save": "Save",

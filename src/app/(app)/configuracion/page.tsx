@@ -17,7 +17,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
-import { Copy, RefreshCw, Check, Smartphone, Eye, EyeOff, MessageCircle, Unlink, Loader2, Webhook, Plus, Trash2, Bell, BellOff, Sun, Moon, Globe } from "lucide-react";
+import { Copy, RefreshCw, Check, Smartphone, Eye, EyeOff, MessageCircle, Unlink, Loader2, Webhook, Plus, Trash2, Bell, BellOff, Sun, Moon, Globe, Lock } from "lucide-react";
 
 interface UserProfile {
   id: string;
@@ -59,6 +59,10 @@ export default function ConfiguracionPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [webhookAdding, setWebhookAdding] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -237,6 +241,33 @@ export default function ConfiguracionPage() {
     finally { setUnlinkLoading(false); }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmNewPassword) {
+      toast.error(t("settings.passwordsMismatch"));
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error(t("settings.passwordTooShort"));
+      return;
+    }
+    setPasswordLoading(true);
+    try {
+      await apiClient("/api/users/me/password", {
+        method: "PATCH",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      toast.success(t("settings.passwordChanged"));
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("common.error"));
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   const handleLanguageChange = (newLocale: string) => {
     setLocale(newLocale as Locale);
     toast.success(t("settings.languageUpdated"));
@@ -329,6 +360,64 @@ export default function ConfiguracionPage() {
           <Input value={profile.email} disabled
             className="bg-surface-raised/30 border-border-subtle h-10 rounded-xl text-text-muted" />
         </div>
+      </div>
+
+      {/* Change Password */}
+      <div className="glass-card rounded-2xl p-6 space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-brand/10 rounded-xl">
+            <Lock className="h-4 w-4 text-brand" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">{t("settings.changePassword")}</h3>
+            <p className="text-xs text-text-muted">{t("settings.changePasswordDesc")}</p>
+          </div>
+        </div>
+        <form onSubmit={handleChangePassword} className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-text-secondary text-xs uppercase tracking-wider">{t("settings.currentPassword")}</Label>
+            <Input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              placeholder={t("settings.currentPasswordPlaceholder")}
+              className="bg-surface-raised/50 border-border-subtle h-10 rounded-xl"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-text-secondary text-xs uppercase tracking-wider">{t("settings.newPassword")}</Label>
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              minLength={6}
+              placeholder={t("settings.newPasswordPlaceholder")}
+              className="bg-surface-raised/50 border-border-subtle h-10 rounded-xl"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-text-secondary text-xs uppercase tracking-wider">{t("settings.confirmNewPassword")}</Label>
+            <Input
+              type="password"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              required
+              minLength={6}
+              placeholder={t("settings.confirmNewPasswordPlaceholder")}
+              className="bg-surface-raised/50 border-border-subtle h-10 rounded-xl"
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={passwordLoading}
+            className="bg-brand hover:bg-brand-dark text-white font-semibold h-10 px-6 rounded-xl"
+          >
+            {passwordLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
+            {t("settings.changePasswordBtn")}
+          </Button>
+        </form>
       </div>
 
       {/* API Token */}

@@ -26,6 +26,28 @@ export function verifyRefreshToken(token: string): TokenPayload {
   return jwt.verify(token, JWT_REFRESH_SECRET) as TokenPayload;
 }
 
+export function signPasswordResetToken(userId: string, passwordHash: string): string {
+  // Sign with JWT_SECRET + passwordHash so the token is single-use
+  // (it becomes invalid once the password changes)
+  return jwt.sign({ userId, purpose: "password-reset" }, JWT_SECRET + passwordHash, {
+    expiresIn: "1h",
+  });
+}
+
+export function verifyPasswordResetToken(
+  token: string,
+  passwordHash: string
+): { userId: string } {
+  const payload = jwt.verify(token, JWT_SECRET + passwordHash) as {
+    userId: string;
+    purpose: string;
+  };
+  if (payload.purpose !== "password-reset") {
+    throw new Error("Invalid token purpose");
+  }
+  return { userId: payload.userId };
+}
+
 export type AuthenticatedRequest = NextRequest & {
   userId: string;
 };

@@ -90,7 +90,19 @@
     "shortcutMethod": "Metodo:",
     "shortcutBody": "Body (JSON): usa las variables de la transaccion:",
     "shortcutBodyHint": "Toca cada campo y selecciona la variable magica correspondiente de la transaccion",
-    "shortcutTroubleshoot": "Si la automatizacion no se ejecuta: verifica que \"Ejecutar inmediatamente\" este activo y que la tarjeta que usaste este seleccionada en el trigger."
+    "shortcutTroubleshoot": "Si la automatizacion no se ejecuta: verifica que \"Ejecutar inmediatamente\" este activo y que la tarjeta que usaste este seleccionada en el trigger.",
+    "changePassword": "Cambiar contrasena",
+    "changePasswordDesc": "Actualiza tu contrasena de acceso",
+    "currentPassword": "Contrasena actual",
+    "currentPasswordPlaceholder": "Tu contrasena actual",
+    "newPassword": "Nueva contrasena",
+    "newPasswordPlaceholder": "Minimo 6 caracteres",
+    "confirmNewPassword": "Confirmar nueva contrasena",
+    "confirmNewPasswordPlaceholder": "Repite la nueva contrasena",
+    "changePasswordBtn": "Cambiar contrasena",
+    "passwordChanged": "Contrasena actualizada exitosamente",
+    "passwordsMismatch": "Las contrasenas no coinciden",
+    "passwordTooShort": "La contrasena debe tener al menos 6 caracteres"
   },
   "common": {
     "save": "Guardar",
