@@ -118,9 +118,17 @@ export async function POST(req: NextRequest) {
       currency = parsedCurrency.currency;
     }
 
-    console.log("[SHORTCUT] Final parsed:", { amount, currency });
+    // iOS Apple Pay often sends amount=0 because the actual amount
+    // isn't available at trigger time (especially credit cards).
+    // We accept 0 and create the expense so the user can edit it later.
+    const amountIsZero = amount === 0 || isNaN(amount);
+    if (amountIsZero) {
+      amount = 0;
+    }
 
-    if (isNaN(amount) || amount <= 0) {
+    console.log("[SHORTCUT] Final parsed:", { amount, currency, amountIsZero });
+
+    if (isNaN(amount) || amount < 0) {
       console.log("[SHORTCUT] Invalid amount, rejecting");
       return NextResponse.json(
         { error: "Datos invalidos", details: `amount invalido: ${String(rawAmount)}` },
@@ -142,10 +150,10 @@ export async function POST(req: NextRequest) {
     // Classify with AI
     const classification = await classifyExpense(merchant, categories);
 
-    // Convert to USD
-    const amountUsd = await convertToUSD(amount, currency);
+    // Convert to USD (0 if amount is 0)
+    const amountUsd = amount > 0 ? await convertToUSD(amount, currency) : 0;
 
-    // Create expense
+    // Create expense - if amount is 0, add note in description
     const expense = await prisma.expense.create({
       data: {
         userId,
@@ -154,7 +162,9 @@ export async function POST(req: NextRequest) {
         currency,
         amountUsd,
         categoryId: classification.categoryId,
-        descriptionAi: classification.description,
+        descriptionAi: amountIsZero
+          ? `${classification.description || ""} (monto pendiente - editar)`.trim()
+          : classification.description,
         spaceId: user?.defaultSpaceId || null,
         source: "SHORTCUT",
       },
