@@ -3,6 +3,7 @@ import { authenticateByApiToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseCurrency, convertToUSD } from "@/lib/currency";
 import { classifyExpense } from "@/lib/ai/classify";
+import { requestAmountViaTelegram } from "@/lib/telegram/bot";
 
 // Simple in-memory rate limiting
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -118,15 +119,7 @@ export async function POST(req: NextRequest) {
       currency = parsedCurrency.currency;
     }
 
-    // iOS Apple Pay often sends amount=0 because the actual amount
-    // isn't available at trigger time (especially credit cards).
-    // We accept 0 and create the expense so the user can edit it later.
-    const amountIsZero = amount === 0 || isNaN(amount);
-    if (amountIsZero) {
-      amount = 0;
-    }
-
-    console.log("[SHORTCUT] Final parsed:", { amount, currency, amountIsZero });
+    console.log("[SHORTCUT] Final parsed:", { amount, currency });
 
     if (isNaN(amount) || amount < 0) {
       console.log("[SHORTCUT] Invalid amount, rejecting");
@@ -135,6 +128,8 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    const amountIsZero = amount === 0;
 
     // Get user's categories and default space
     const user = await prisma.user.findUnique({
@@ -163,7 +158,7 @@ export async function POST(req: NextRequest) {
         amountUsd,
         categoryId: classification.categoryId,
         descriptionAi: amountIsZero
-          ? `${classification.description || ""} (monto pendiente - editar)`.trim()
+          ? `${classification.description || ""} (monto pendiente)`.trim()
           : classification.description,
         spaceId: user?.defaultSpaceId || null,
         source: "SHORTCUT",
@@ -180,6 +175,13 @@ export async function POST(req: NextRequest) {
       currency: expense.currency,
       category: expense.category?.name,
     });
+
+    // If amount was 0 (Apple Pay), ask for real amount via Telegram
+    if (amountIsZero) {
+      requestAmountViaTelegram(userId, expense.id, merchant, currency).catch((err) =>
+        console.error("[SHORTCUT] Telegram notification error:", err)
+      );
+    }
 
     return NextResponse.json({
       success: true,

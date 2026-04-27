@@ -20,6 +20,12 @@ const pendingExpenses = new Map<
   }
 >();
 
+// Pending amount requests: expenses created with amount=0 waiting for real amount via Telegram
+const pendingAmountRequests = new Map<
+  string, // chatId
+  { expenseId: string; merchant: string; currency: "COP" | "USD" }
+>();
+
 export async function generateLinkingCode(userId: string): Promise<string> {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -718,6 +724,33 @@ function createBot(): Bot {
       return ctx.reply("Cuenta no vinculada. Envia tu codigo de 6 digitos.");
     }
 
+    // Check if user has a pending amount request (from Apple Pay shortcut with amount=0)
+    const pendingAmount = pendingAmountRequests.get(chatId);
+    if (pendingAmount) {
+      const cleaned = text.replace(/[^0-9.,]/g, "");
+      const parsed = parseFloat(cleaned.replace(/,/g, ""));
+      if (cleaned && !isNaN(parsed) && parsed > 0) {
+        pendingAmountRequests.delete(chatId);
+        try {
+          const amountUsd = await convertToUSD(parsed, pendingAmount.currency);
+          await prisma.expense.update({
+            where: { id: pendingAmount.expenseId },
+            data: { amount: parsed, amountUsd },
+          });
+          const formatted = pendingAmount.currency === "COP"
+            ? `$${parsed.toLocaleString("es-CO")} COP`
+            : `$${parsed.toFixed(2)} USD`;
+          await ctx.reply(`✅ Actualizado: ${pendingAmount.merchant} → ${formatted}`);
+        } catch (error) {
+          console.error("[BOT] Error updating pending amount:", error);
+          await ctx.reply("Error al actualizar el monto. Puedes editarlo desde la app.");
+        }
+        return;
+      }
+      // If not a valid number, clear the pending and continue with normal flow
+      pendingAmountRequests.delete(chatId);
+    }
+
     // Detect natural language questions and route to AI chat
     if (isQuestion(text)) {
       await handleChatQuestion(ctx, user.id, text);
@@ -1097,6 +1130,44 @@ export async function checkDuplicateAndNotify(
     });
   } catch (error) {
     console.error("Duplicate check error:", error);
+  }
+}
+
+// Request amount via Telegram for expenses created with amount=0 (Apple Pay shortcut)
+export async function requestAmountViaTelegram(
+  userId: string,
+  expenseId: string,
+  merchant: string,
+  currency: "COP" | "USD"
+): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { telegramChatId: true },
+    });
+
+    if (!user?.telegramChatId) return;
+
+    pendingAmountRequests.set(user.telegramChatId, { expenseId, merchant, currency });
+
+    // Auto-expire after 30 minutes
+    setTimeout(() => {
+      const current = pendingAmountRequests.get(user.telegramChatId!);
+      if (current?.expenseId === expenseId) {
+        pendingAmountRequests.delete(user.telegramChatId!);
+      }
+    }, 30 * 60 * 1000);
+
+    const bot = getBot();
+    await bot.api.sendMessage(
+      user.telegramChatId,
+      `💳 *Gasto registrado sin monto*\n\n` +
+        `🏪 ${merchant}\n\n` +
+        `Responde con el monto (ej: \`35000\` o \`15.50\`):`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (error) {
+    console.error("[BOT] Error requesting amount via Telegram:", error);
   }
 }
 
