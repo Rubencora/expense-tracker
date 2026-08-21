@@ -1,0 +1,42 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (VPS)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: 5.78.121.167
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -e
+            # Resolve the compose working dir from the running container; fall back to common paths.
+            DIR="$(docker inspect expense-tracker --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)"
+            if [ -z "$DIR" ] || [ ! -d "$DIR" ]; then
+              for c in /opt/expense-tracker /root/expense-tracker /srv/expense-tracker /root/projects/expense-tracker; do
+                if [ -d "$c" ]; then DIR="$c"; break; fi
+              done
+            fi
+            if [ -z "$DIR" ] || [ ! -f "$DIR/deploy.sh" ]; then
+              echo "expense-tracker repo not found on server"; exit 1
+            fi
+            echo "Deploying in $DIR"
+            cd "$DIR"
+            git fetch origin main
+            git reset --hard origin/main
+            chmod +x deploy.sh
+            ./deploy.sh
+            docker compose ps
