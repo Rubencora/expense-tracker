@@ -18,8 +18,10 @@ docker compose up -d
 # The production image is a Next.js standalone build without the Prisma CLI or dotenv,
 # so migrations run in a throwaway node container with the repo's prisma/ mounted.
 echo ">> Running database migrations..."
+# docker run --env-file keeps surrounding quotes (compose strips them), so read the URL ourselves.
+DB_URL="$(grep -E '^DATABASE_URL=' .env.production | head -1 | cut -d= -f2- | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//')"
 docker run --rm \
-  --env-file .env.production \
+  -e DATABASE_URL="$DB_URL" \
   -v "$PWD/prisma:/app/prisma:ro" \
   -v "$PWD/prisma.config.ts:/app/prisma.config.ts:ro" \
   -w /app node:22-alpine \
