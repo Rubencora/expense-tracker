@@ -41,6 +41,8 @@ import {
 import { MonthNotes } from "@/components/debts/MonthNotes";
 import { toast } from "sonner";
 import {
+  CalendarMinus,
+  CalendarPlus,
   CreditCard,
   Loader2,
   MoreHorizontal,
@@ -333,11 +335,30 @@ function KpiCard({ label, value, hint, hintClassName, icon, children }: KpiCardP
 /*  Page                                                                       */
 /* -------------------------------------------------------------------------- */
 
+const FUTURE_MONTHS_KEY = "deudas:futureMonths";
+
 export default function DeudasPage() {
   const [data, setData] = useState<BalanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [range, setRange] = useState<RangeOption>("12");
+  /** Months shown beyond the current one (for planning ahead). Persisted per browser. */
+  const [futureMonths, setFutureMonths] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    const stored = Number(window.localStorage.getItem(FUTURE_MONTHS_KEY) ?? "0");
+    return Number.isFinite(stored) ? Math.max(0, Math.min(12, stored)) : 0;
+  });
+  const changeFutureMonths = (delta: number) => {
+    setFutureMonths((prev) => {
+      const next = Math.max(0, Math.min(12, prev + delta));
+      try {
+        window.localStorage.setItem(FUTURE_MONTHS_KEY, String(next));
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  };
   const [unit, setUnit] = useState<Unit>("miles");
   const [showInactive, setShowInactive] = useState(false);
   const [earliestKey, setEarliestKey] = useState<string | null>(null);
@@ -363,14 +384,15 @@ export default function DeudasPage() {
       if (withSpinner) setLoading(true);
       try {
         const now = new Date();
-        const to = { year: now.getFullYear(), month: now.getMonth() + 1 };
-        const toIdx = to.year * 12 + to.month;
+        const current = { year: now.getFullYear(), month: now.getMonth() + 1 };
+        const currentIdx = current.year * 12 + current.month;
+        const to = addMonths(current.year, current.month, futureMonths);
 
-        let from = addMonths(to.year, to.month, -(Number(range) - 1) || -11);
+        let from = addMonths(current.year, current.month, -(Number(range) - 1) || -11);
         if (range === "all") {
           const parsed = earliestKey ? parseMonthKey(earliestKey) : null;
-          const candidate = parsed ?? addMonths(to.year, to.month, -23);
-          from = candidate.year * 12 + candidate.month > toIdx ? to : candidate;
+          const candidate = parsed ?? addMonths(current.year, current.month, -23);
+          from = candidate.year * 12 + candidate.month > currentIdx ? current : candidate;
         }
 
         const params = new URLSearchParams({
@@ -392,20 +414,22 @@ export default function DeudasPage() {
         if (withSpinner) setLoading(false);
       }
     },
-    [range, showInactive, earliestKey]
+    [range, showInactive, earliestKey, futureMonths]
   );
 
   useEffect(() => {
     fetchBalance(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, showInactive]);
+  }, [range, showInactive, futureMonths]);
 
   const columns = useMemo(() => data?.columns ?? [], [data]);
   const debts = useMemo(() => data?.debts ?? [], [data]);
-  const latest: MonthSummary | null =
-    columns.length > 0 ? columns[columns.length - 1].summary : null;
+  // KPIs and the notes default month follow the current month when it is in
+  // range (future months added for planning should not drive the headline numbers).
   const latestColumn: MonthColumn | null =
-    columns.length > 0 ? columns[columns.length - 1] : null;
+    columns.find((c) => c.key === currentKey) ??
+    (columns.length > 0 ? columns[columns.length - 1] : null);
+  const latest: MonthSummary | null = latestColumn?.summary ?? null;
   /** TRM used outside of a month column (dialog inputs). */
   const formTrm = latest?.trm ?? data?.fallbackTrm ?? 0;
   const noteMonths = useMemo(
@@ -684,6 +708,32 @@ export default function DeudasPage() {
               <SelectItem value="all">Todo</SelectItem>
             </SelectContent>
           </Select>
+
+          <div className="flex h-10 items-center rounded-xl border border-border-subtle bg-surface-raised/50 px-1">
+            <button
+              type="button"
+              onClick={() => changeFutureMonths(1)}
+              disabled={futureMonths >= 12}
+              title="Agregar un mes futuro a la tabla"
+              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-overlay hover:text-text-primary disabled:opacity-40"
+            >
+              <CalendarPlus className="h-4 w-4" />
+              Mes
+            </button>
+            {futureMonths > 0 && (
+              <>
+                <span className="px-1 font-numbers text-xs text-brand">+{futureMonths}</span>
+                <button
+                  type="button"
+                  onClick={() => changeFutureMonths(-1)}
+                  title="Quitar el ultimo mes futuro"
+                  className="flex h-8 items-center rounded-lg px-2 text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
+                >
+                  <CalendarMinus className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
 
           <Button
             size="sm"
