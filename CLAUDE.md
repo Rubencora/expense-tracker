@@ -23,6 +23,7 @@ App web de registro de gastos personales con bot de Telegram, captura automatica
 - `npm run build` — build de produccion
 - `npm run lint` — linter
 - `npx tsx scripts/screenshot.ts` — tomar screenshots de todas las paginas
+- `npx tsx scripts/import-debts-xlsx.ts --file "../Deudas Ruben 2026.xlsx" --email <email> [--dry-run]` — importar el historico de deudas desde el Excel (idempotente)
 
 ## Screenshots (Puppeteer)
 El proyecto incluye un script de Puppeteer para capturar screenshots automaticamente.
@@ -71,6 +72,7 @@ src/
     ai/
       classify.ts         # Clasificacion de gastos con OpenAI (gpt-4o-mini)
     currency.ts           # Parser COP/USD + conversion
+    debts.ts              # Calculos puros del Balance de deudas (replica las formulas del Excel)
     telegram/
       bot.ts              # Bot de Telegram con grammy + OpenAI
   components/
@@ -93,6 +95,9 @@ prisma/
 - **Space:** id, name, created_by, invite_code, created_at
 - **SpaceMember:** id, space_id, user_id, role (owner/member), joined_at
 - **Budget:** id, user_id, category_id, monthly_limit_usd, created_at
+- **Debt:** id, user_id, name, kind (CREDIT_CARD/LOAN/PERSONAL/TAX/OTHER), currency, credit_limit, is_active, sort_order, notes
+- **DebtEntry:** id, debt_id, year, month, balance (saldo), payment (pago) — unico por (debt_id, year, month); montos en la moneda de la deuda, unidades completas
+- **DebtMonth:** id, user_id, year, month, salary (sueldo), extra_income, trm (COP por USD, opcional: se arrastra el ultimo valor explicito) — unico por (user_id, year, month)
 
 **Nota Prisma 7:** No usar `url` en datasource del schema. La URL se configura en `prisma.config.ts`. Los campos con `@map` se acceden por su nombre Prisma (ej: `createdBy` no `createdById`). Las relaciones requieren `connect` en vez de IDs directos en `create()`.
 
@@ -104,6 +109,14 @@ prisma/
 - Interfaz 100% en espanol
 - Mobile-first responsive design
 - Siempre usar `async/await`, nunca `.then()`
+
+## Balance de Deudas (pagina /deudas)
+Replica la hoja "Balance" del Excel historico: una fila por deuda y, por cada mes, dos columnas **Saldo | Pagos**.
+- DEUDA TOTAL = suma de saldos del mes (deudas USD convertidas con la TRM del mes); PAGOS = suma de pagos
+- Ingresos = Sueldo + Ingresos extra; Presupuesto/dia = Ingresos / dias del mes
+- Ejecutado/dia = Deuda total / dias transcurridos (mes actual: dia de hoy; meses pasados: dias del mes); % ejecucion = Ejecutado/dia / Presupuesto/dia
+- Diferencia = Ingresos - Deuda total; Consumo TC = suma saldos tarjetas con cupo / suma cupos
+- La UI tiene toggle **Miles | Pesos**: en "Miles" se escribe y se muestra en miles de COP (4862 = $4.862.000), como en el Excel. En BD siempre se guardan unidades completas.
 
 ## Reglas de Moneda (IMPORTANTE)
 - Formato colombiano: punto como separador de miles -> `$53.000` = 53000 COP

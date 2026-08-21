@@ -15,6 +15,7 @@ import {
   Banknote,
   Target,
   MessageSquare,
+  CreditCard,
 } from "lucide-react";
 import OnboardingModal from "@/components/onboarding/OnboardingModal";
 
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { href: "/gastos", labelKey: "nav.expenses", icon: Receipt },
   { href: "/ingresos", labelKey: "nav.income", icon: Banknote },
   { href: "/metas", labelKey: "nav.goals", icon: Target },
+  { href: "/deudas", labelKey: "nav.debts", icon: CreditCard },
   { href: "/chat", labelKey: "nav.chat", icon: MessageSquare },
   { href: "/categorias", labelKey: "nav.categories", icon: Tags },
   { href: "/espacios", labelKey: "nav.spaces", icon: Users },
@@ -127,14 +129,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-50">
         <div className="mx-3 mb-3 rounded-2xl glass-card border border-border-subtle overflow-hidden">
-          <div className="flex justify-around py-1">
+          <div className="flex justify-around py-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {NAV_ITEMS.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex flex-col items-center py-2.5 px-3 text-[10px] font-medium transition-all relative ${
+                  className={`flex flex-col items-center shrink-0 whitespace-nowrap py-2.5 px-3 text-[10px] font-medium transition-all relative ${
                     isActive ? "text-brand" : "text-text-muted"
                   }`}
                 >

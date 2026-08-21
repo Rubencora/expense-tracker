@@ -40,6 +40,14 @@ enum IncomeFrequency {
   YEARLY
 }
 
+enum DebtKind {
+  CREDIT_CARD
+  LOAN
+  PERSONAL
+  TAX
+  OTHER
+}
+
 model User {
   id                   String        @id @default(cuid())
   email                String        @unique
@@ -71,6 +79,8 @@ model User {
   tags             Tag[]
   webhooks         Webhook[]
   pushSubscriptions PushSubscription[]
+  debts            Debt[]
+  debtMonths       DebtMonth[]
 
   @@map("users")
 }
@@ -328,4 +338,57 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+model Debt {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  name        String
+  kind        DebtKind @default(OTHER)
+  currency    String   @default("COP")
+  creditLimit Float?   @map("credit_limit")
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries DebtEntry[]
+
+  @@index([userId])
+  @@map("debts")
+}
+
+model DebtEntry {
+  id        String   @id @default(cuid())
+  debtId    String   @map("debt_id")
+  year      Int
+  month     Int
+  balance   Float    @default(0)
+  payment   Float    @default(0)
+  note      String?
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  debt Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@unique([debtId, year, month])
+  @@index([year, month])
+  @@map("debt_entries")
+}
+
+model DebtMonth {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  year        Int
+  month       Int
+  salary      Float    @default(0)
+  extraIncome Float    @default(0) @map("extra_income")
+  trm         Float?
+  notes       String?
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, month])
+  @@map("debt_months")
 }
