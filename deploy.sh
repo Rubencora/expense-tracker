@@ -15,8 +15,15 @@ echo ">> Starting container..."
 docker compose up -d
 
 # Run migrations
+# The production image is a Next.js standalone build without the Prisma CLI or dotenv,
+# so migrations run in a throwaway node container with the repo's prisma/ mounted.
 echo ">> Running database migrations..."
-docker compose exec app npx prisma migrate deploy
+docker run --rm \
+  --env-file .env.production \
+  -v "$PWD/prisma:/app/prisma:ro" \
+  -v "$PWD/prisma.config.ts:/app/prisma.config.ts:ro" \
+  -w /app node:22-alpine \
+  sh -c "npm init -y >/dev/null 2>&1 && npm install --no-audit --no-fund --silent prisma@7.4.1 dotenv >/dev/null && npx prisma migrate deploy"
 
 echo ">> Deploy complete!"
 echo ">> App running at http://localhost:3000"
