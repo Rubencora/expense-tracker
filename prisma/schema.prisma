@@ -81,6 +81,7 @@ model User {
   pushSubscriptions PushSubscription[]
   debts            Debt[]
   debtMonths       DebtMonth[]
+  debtNoteGroups   DebtNoteGroup[]
 
   @@map("users")
 }
@@ -391,4 +392,33 @@ model DebtMonth {
 
   @@unique([userId, year, month])
   @@map("debt_months")
+}
+
+model DebtNoteGroup {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  year      Int
+  month     Int
+  title     String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items DebtNoteItem[]
+
+  @@index([userId, year, month])
+  @@map("debt_note_groups")
+}
+
+model DebtNoteItem {
+  id        String @id @default(cuid())
+  groupId   String @map("group_id")
+  label     String
+  amount    Float  @default(0)
+  sortOrder Int    @default(0) @map("sort_order")
+
+  group DebtNoteGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@map("debt_note_items")
 }

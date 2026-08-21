@@ -98,6 +98,7 @@ prisma/
 - **Debt:** id, user_id, name, kind (CREDIT_CARD/LOAN/PERSONAL/TAX/OTHER), currency, credit_limit, is_active, sort_order, notes
 - **DebtEntry:** id, debt_id, year, month, balance (saldo), payment (pago) — unico por (debt_id, year, month); montos en la moneda de la deuda, unidades completas
 - **DebtMonth:** id, user_id, year, month, salary (sueldo), extra_income, trm (COP por USD, opcional: se arrastra el ultimo valor explicito) — unico por (user_id, year, month)
+- **DebtNoteGroup / DebtNoteItem:** bloques libres por mes ("Notas del mes": titulo + lineas label/amount, total calculado), como las notas debajo de cada columna del Excel
 
 **Nota Prisma 7:** No usar `url` en datasource del schema. La URL se configura en `prisma.config.ts`. Los campos con `@map` se acceden por su nombre Prisma (ej: `createdBy` no `createdById`). Las relaciones requieren `connect` en vez de IDs directos en `create()`.
 
@@ -116,7 +117,8 @@ Replica la hoja "Balance" del Excel historico: una fila por deuda y, por cada me
 - Ingresos = Sueldo + Ingresos extra; Presupuesto/dia = Ingresos / dias del mes
 - Ejecutado/dia = Deuda total / dias transcurridos (mes actual: dia de hoy; meses pasados: dias del mes); % ejecucion = Ejecutado/dia / Presupuesto/dia
 - Diferencia = Ingresos - Deuda total; Consumo TC = suma saldos tarjetas con cupo / suma cupos
-- La UI tiene toggle **Miles | Pesos**: en "Miles" se escribe y se muestra en miles de COP (4862 = $4.862.000), como en el Excel. En BD siempre se guardan unidades completas.
+- La UI tiene toggle **Miles | USD**: en "Miles" se escribe y se muestra en miles de COP (4862 = $4.862.000), como en el Excel; en "USD" se muestra/escribe en dolares convertidos con la TRM del mes. En BD siempre se guardan unidades completas en la moneda de la deuda.
+- Seccion "Notas del mes" (`src/components/debts/MonthNotes.tsx`, API `/api/debts/notes*`): grupos editables por mes con total automatico y "Copiar del mes anterior".
 
 ## Reglas de Moneda (IMPORTANTE)
 - Formato colombiano: punto como separador de miles -> `$53.000` = 53000 COP

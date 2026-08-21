@@ -25,6 +25,18 @@ interface MonthData {
   extraIncome: number;
 }
 
+interface DebtNoteItemData {
+  label: string;
+  amount: number;
+  sortOrder: number;
+}
+
+interface DebtNoteGroupData {
+  title: string;
+  items: DebtNoteItemData[];
+  sortOrder: number;
+}
+
 // Parse month header: "Nov.22", "Jan.23", Date objects, etc.
 // Rows in column A that are section labels, not real debts.
 const LABEL_ROWS = new Set(["tc", "cuota credito banco"]);
@@ -149,6 +161,185 @@ function getDebtMetadata(
 
   // Default to OTHER
   return { kind: "OTHER", creditLimit: null };
+}
+
+// Parse note blocks for a given month (rows 35-91)
+/**
+ * Untitled blocks whose lines mostly start with the same word
+ * (e.g. "Impuestos May 2026", "Impuestos Junio 2026") take that word as title.
+ */
+function sharedPrefixTitle(items: DebtNoteItemData[]): string | null {
+  if (items.length < 2) return null;
+  const counts = new Map<string, number>();
+  for (const it of items) {
+    const word = it.label.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+    if (word.length < 4) continue;
+    counts.set(word, (counts.get(word) ?? 0) + 1);
+  }
+  let best: [string, number] | null = null;
+  for (const entry of counts) {
+    if (!best || entry[1] > best[1]) best = entry;
+  }
+  if (!best || best[1] < 2 || best[1] * 2 < items.length) return null;
+  return best[0].charAt(0).toUpperCase() + best[0].slice(1);
+}
+
+function parseNoteBlocks(
+  sheet: XLSX.WorkSheet,
+  colIndex: number
+): DebtNoteGroupData[] {
+  const firstColLetter = XLSX.utils.encode_col(colIndex);
+  const secondColLetter = XLSX.utils.encode_col(colIndex + 1);
+
+  const blocks: DebtNoteGroupData[] = [];
+  let currentBlock: {
+    items: DebtNoteItemData[];
+    title: string | null;
+  } | null = null;
+  let blockSortOrder = 0;
+  let hasExplicitTitle = false;
+
+  for (let rowIndex = 35; rowIndex <= 91; rowIndex++) {
+    const labelCell = sheet[`${firstColLetter}${rowIndex}`];
+    const valueCell = sheet[`${secondColLetter}${rowIndex}`];
+
+    const label =
+      labelCell && typeof labelCell.v === "string"
+        ? labelCell.v.trim()
+        : null;
+    const value =
+      valueCell && typeof valueCell.v === "number" ? valueCell.v : null;
+
+    // Empty row: not a string label AND not a number value
+    const isEmpty = label === null && value === null;
+
+    if (isEmpty) {
+      // End current block
+      if (currentBlock && currentBlock.items.length > 0) {
+        // Determine final title
+        let finalTitle = currentBlock.title;
+        if (!finalTitle) {
+          if (currentBlock.items.length === 1) {
+            // Single item: use its label
+            finalTitle = currentBlock.items[0].label;
+          } else {
+            // Multi-item untitled block: "Notas", "Notas 2", "Notas 3", etc.
+            const shared = sharedPrefixTitle(currentBlock.items);
+            const untitledCount = blocks.filter(
+              (b) => b.title.startsWith("Notas")
+            ).length;
+            finalTitle =
+              shared ??
+              (untitledCount === 0 ? "Notas" : `Notas ${untitledCount + 1}`);
+          }
+        }
+
+        blocks.push({
+          title: finalTitle,
+          items: currentBlock.items,
+          sortOrder: blockSortOrder,
+        });
+        blockSortOrder++;
+      }
+      currentBlock = null;
+      hasExplicitTitle = false;
+      continue;
+    }
+
+    // Skip if label is not a string (date/number in label column is a separator)
+    if (label === null) {
+      // End current block
+      if (currentBlock && currentBlock.items.length > 0) {
+        let finalTitle = currentBlock.title;
+        if (!finalTitle) {
+          if (currentBlock.items.length === 1) {
+            finalTitle = currentBlock.items[0].label;
+          } else {
+            const shared = sharedPrefixTitle(currentBlock.items);
+            const untitledCount = blocks.filter(
+              (b) => b.title.startsWith("Notas")
+            ).length;
+            finalTitle =
+              shared ??
+              (untitledCount === 0 ? "Notas" : `Notas ${untitledCount + 1}`);
+          }
+        }
+        blocks.push({
+          title: finalTitle,
+          items: currentBlock.items,
+          sortOrder: blockSortOrder,
+        });
+        blockSortOrder++;
+      }
+      currentBlock = null;
+      hasExplicitTitle = false;
+      continue;
+    }
+
+    // Skip rows matching /^\s*(sub-?\s*)?total/i
+    if (/^\s*(sub-?\s*)?total/i.test(label)) {
+      continue;
+    }
+
+    // Start new block if needed
+    if (!currentBlock) {
+      currentBlock = { items: [], title: null };
+      hasExplicitTitle = false;
+    }
+
+    // Row with label but no value: potential title (only if block has no items yet)
+    if (value === null) {
+      if (currentBlock.items.length === 0 && !hasExplicitTitle) {
+        currentBlock.title = label;
+        hasExplicitTitle = true;
+      }
+      // Otherwise ignore label-without-number rows in the middle of a block
+      continue;
+    }
+
+    // Skip values with Math.abs(value) < 1 (ratios)
+    if (Math.abs(value) < 1) {
+      continue;
+    }
+
+    // Amount conversion: if value < 1_000_000 multiply by 1000; else keep as is
+    const amount =
+      Math.abs(value) < 1_000_000
+        ? Math.round(value * 1000)
+        : Math.round(value);
+
+    // Add item
+    currentBlock.items.push({
+      label,
+      amount,
+      sortOrder: currentBlock.items.length,
+    });
+  }
+
+  // Handle last block if it exists
+  if (currentBlock && currentBlock.items.length > 0) {
+    let finalTitle = currentBlock.title;
+    if (!finalTitle) {
+      if (currentBlock.items.length === 1) {
+        finalTitle = currentBlock.items[0].label;
+      } else {
+        const shared = sharedPrefixTitle(currentBlock.items);
+        const untitledCount = blocks.filter(
+          (b) => b.title.startsWith("Notas")
+        ).length;
+        finalTitle =
+          shared ??
+          (untitledCount === 0 ? "Notas" : `Notas ${untitledCount + 1}`);
+      }
+    }
+    blocks.push({
+      title: finalTitle,
+      items: currentBlock.items,
+      sortOrder: blockSortOrder,
+    });
+  }
+
+  return blocks;
 }
 
 async function main() {
@@ -348,10 +539,31 @@ async function main() {
       monthDataMap.set(key, { year: month.year, month: month.month, salary, extraIncome });
     }
 
+    // Parse note blocks for months >= 2025-12 (only import for these)
+    const noteGroupsByMonth = new Map<
+      string,
+      DebtNoteGroupData[]
+    >();
+
+    for (const { colIndex, month } of monthColumns) {
+      const monthKey = `${month.year}-${String(month.month).padStart(2, "0")}`;
+
+      // Only import notes for months >= 2025-12
+      if (month.year < 2025 || (month.year === 2025 && month.month < 12)) {
+        continue;
+      }
+
+      const groups = parseNoteBlocks(sheet, colIndex);
+      if (groups.length > 0) {
+        noteGroupsByMonth.set(monthKey, groups);
+      }
+    }
+
     // Summary for dry-run
     const summary = {
       debtsToProcess: debts.size,
       monthsToProcess: monthDataMap.size,
+      noteGroupsByMonth: noteGroupsByMonth.size,
       monthRange: monthColumns.length > 0
         ? `${monthColumns[0].month.month}/${monthColumns[0].month.year} - ${monthColumns[monthColumns.length - 1].month.month}/${monthColumns[monthColumns.length - 1].month.year}`
         : "N/A",
@@ -387,6 +599,20 @@ async function main() {
         );
       }
 
+      console.log("\n=== NOTE GROUPS ===");
+      for (const [monthKey, groups] of noteGroupsByMonth) {
+        console.log(`\n${monthKey}:`);
+        for (const group of groups) {
+          const groupTotal = group.items.reduce((sum, item) => sum + item.amount, 0);
+          const groupTotalThousands = (groupTotal / 1000).toFixed(1);
+          console.log(`  "${group.title}" (${group.items.length} items, ${groupTotalThousands}k):`);
+          for (const item of group.items) {
+            const itemThousands = (item.amount / 1000).toFixed(1);
+            console.log(`    - ${item.label}: ${itemThousands}k`);
+          }
+        }
+      }
+
       await prisma.$disconnect();
       return;
     }
@@ -398,6 +624,8 @@ async function main() {
     let debtsUpdated = 0;
     let entriesUpserted = 0;
     let monthsUpserted = 0;
+    let noteGroupsCreated = 0;
+    let noteItemsCreated = 0;
 
     for (const [name, debt] of debts) {
       const metadata = getDebtMetadata(name);
@@ -506,11 +734,59 @@ async function main() {
       monthsUpserted++;
     }
 
+    // Import note groups (only for months >= 2025-12)
+    for (const [monthKey, groups] of noteGroupsByMonth) {
+      const [yearStr, monthStr] = monthKey.split("-");
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+
+      // Check if this month already has note groups
+      const existingGroupCount = await prisma.debtNoteGroup.count({
+        where: {
+          userId: user.id,
+          year,
+          month,
+        },
+      });
+
+      if (existingGroupCount > 0) {
+        console.log(
+          `Skipping notes for ${monthKey} (already has ${existingGroupCount} groups)`
+        );
+        continue;
+      }
+
+      // Create note groups with their items
+      for (const group of groups) {
+        await prisma.debtNoteGroup.create({
+          data: {
+            userId: user.id,
+            year,
+            month,
+            title: group.title,
+            sortOrder: group.sortOrder,
+            items: {
+              create: group.items.map((item) => ({
+                label: item.label,
+                amount: item.amount,
+                sortOrder: item.sortOrder,
+              })),
+            },
+          },
+        });
+
+        noteGroupsCreated++;
+        noteItemsCreated += group.items.length;
+      }
+    }
+
     console.log(`\n=== IMPORT COMPLETE ===`);
     console.log(`Debts created: ${debtsCreated}`);
     console.log(`Debts updated: ${debtsUpdated}`);
     console.log(`Entries upserted: ${entriesUpserted}`);
     console.log(`Months upserted: ${monthsUpserted}`);
+    console.log(`Note groups created: ${noteGroupsCreated}`);
+    console.log(`Note items created: ${noteItemsCreated}`);
     console.log(`Month range: ${summary.monthRange}`);
 
     await prisma.$disconnect();

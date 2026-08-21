@@ -38,6 +38,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { MonthNotes } from "@/components/debts/MonthNotes";
 import { toast } from "sonner";
 import {
   CreditCard,
@@ -53,7 +54,7 @@ import {
 /*  Types                                                                      */
 /* -------------------------------------------------------------------------- */
 
-type Unit = "miles" | "pesos";
+type Unit = "miles" | "usd";
 type RangeOption = "6" | "12" | "24" | "all";
 type Currency = "COP" | "USD";
 type EntryField = "balance" | "payment";
@@ -112,9 +113,9 @@ function monthLabel(year: number, month: number): string {
   return `${MONTH_ABBR[month - 1]} ${String(year % 100).padStart(2, "0")}`;
 }
 
-function formatCop(value: number, unit: Unit): string {
+function formatCop(value: number, unit: Unit, trm: number): string {
   if (unit === "miles") return Math.round(value / 1000).toLocaleString("es-CO");
-  return value.toLocaleString("es-CO", { maximumFractionDigits: 0 });
+  return formatUsd(trm > 0 ? value / trm : 0);
 }
 
 function formatUsd(value: number): string {
@@ -124,8 +125,13 @@ function formatUsd(value: number): string {
   });
 }
 
-function formatMoney(value: number, currency: Currency, unit: Unit): string {
-  return currency === "USD" ? formatUsd(value) : formatCop(value, unit);
+function formatMoney(
+  value: number,
+  currency: Currency,
+  unit: Unit,
+  trm: number
+): string {
+  return currency === "USD" ? formatUsd(value) : formatCop(value, unit, trm);
 }
 
 function formatPercent(value: number | null): string {
@@ -157,17 +163,22 @@ function parseAmountInput(raw: string): number | null {
 }
 
 /** Converts a typed value into the stored full-unit amount. */
-function toStored(value: number, currency: Currency, unit: Unit): number {
+function toStored(value: number, currency: Currency, unit: Unit, trm: number): number {
   if (currency === "USD") return Math.round(value * 100) / 100;
-  return unit === "miles" ? Math.round(value * 1000) : Math.round(value);
+  return unit === "miles" ? Math.round(value * 1000) : Math.round(value * trm);
 }
 
 /** Converts a stored amount into the string shown while editing. */
-function toEditString(value: number, currency: Currency, unit: Unit): string {
+function toEditString(
+  value: number,
+  currency: Currency,
+  unit: Unit,
+  trm: number
+): string {
   if (value === 0) return "";
   if (currency === "USD") return String(Math.round(value * 100) / 100);
   if (unit === "miles") return String(Number((value / 1000).toFixed(3)));
-  return String(Math.round(value));
+  return String(Number((trm > 0 ? value / trm : 0).toFixed(2)));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -395,13 +406,19 @@ export default function DeudasPage() {
     columns.length > 0 ? columns[columns.length - 1].summary : null;
   const latestColumn: MonthColumn | null =
     columns.length > 0 ? columns[columns.length - 1] : null;
+  /** TRM used outside of a month column (dialog inputs). */
+  const formTrm = latest?.trm ?? data?.fallbackTrm ?? 0;
+  const noteMonths = useMemo(
+    () => columns.map((c) => ({ year: c.year, month: c.month, trm: c.summary.trm })),
+    [columns]
+  );
 
   /* ---------------------------- Mutations -------------------------------- */
 
   const saveEntry = useCallback(
     async (debt: Debt, column: MonthColumn, field: EntryField, raw: string) => {
       const parsed = parseAmountInput(raw);
-      const value = parsed === null ? 0 : toStored(parsed, debt.currency, unit);
+      const value = parsed === null ? 0 : toStored(parsed, debt.currency, unit, column.summary.trm);
       if (value < 0) {
         toast.error("Los saldos y pagos no pueden ser negativos");
         return;
@@ -464,7 +481,7 @@ export default function DeudasPage() {
           return;
         }
       } else {
-        value = parsed === null ? 0 : toStored(parsed, "COP", unit);
+        value = parsed === null ? 0 : toStored(parsed, "COP", unit, column.summary.trm);
         if (field === "salary" && value < 0) {
           toast.error("El sueldo no puede ser negativo");
           return;
@@ -527,7 +544,7 @@ export default function DeudasPage() {
     setFormKind(debt.kind);
     setFormCurrency(debt.currency);
     setFormLimit(
-      debt.creditLimit ? toEditString(debt.creditLimit, debt.currency, unit) : ""
+      debt.creditLimit ? toEditString(debt.creditLimit, debt.currency, unit, formTrm) : ""
     );
     setFormNotes(debt.notes ?? "");
     setDialogOpen(true);
@@ -537,7 +554,7 @@ export default function DeudasPage() {
     e.preventDefault();
     const parsedLimit = parseAmountInput(formLimit);
     const creditLimit =
-      parsedLimit === null ? null : toStored(parsedLimit, formCurrency, unit);
+      parsedLimit === null ? null : toStored(parsedLimit, formCurrency, unit, formTrm);
 
     setSubmitting(true);
     try {
@@ -609,7 +626,7 @@ export default function DeudasPage() {
     [debts]
   );
 
-  const unitLabel = unit === "miles" ? "miles" : "pesos";
+  const unitLabel = unit === "miles" ? "miles" : "USD";
 
   /* ---------------------------- Render ----------------------------------- */
 
@@ -640,7 +657,7 @@ export default function DeudasPage() {
           </div>
 
           <div className="flex rounded-xl border border-border-subtle bg-surface-raised/50 p-1">
-            {(["miles", "pesos"] as Unit[]).map((u) => (
+            {(["miles", "usd"] as Unit[]).map((u) => (
               <button
                 key={u}
                 type="button"
@@ -651,7 +668,7 @@ export default function DeudasPage() {
                     : "text-text-muted hover:text-text-secondary"
                 }`}
               >
-                {u === "miles" ? "Miles" : "Pesos"}
+                {u === "miles" ? "Miles" : "USD"}
               </button>
             ))}
           </div>
@@ -690,13 +707,14 @@ export default function DeudasPage() {
         <div className="grid grid-cols-1 gap-3 stagger-children sm:grid-cols-2 xl:grid-cols-5">
           <KpiCard
             label={`Deuda total · ${monthLabel(latest.year, latest.month)}`}
-            value={formatCop(latest.totalDebt, unit)}
+            value={formatCop(latest.totalDebt, unit, latest.trm)}
             hint={
               latest.debtDelta === null
                 ? `en ${unitLabel}`
                 : `${latest.debtDelta <= 0 ? "▼" : "▲"} ${formatCop(
                     Math.abs(latest.debtDelta),
-                    unit
+                    unit,
+                    latest.trm
                   )} vs mes anterior`
             }
             hintClassName={
@@ -716,20 +734,21 @@ export default function DeudasPage() {
           />
           <KpiCard
             label="Pagos del mes"
-            value={formatCop(latest.totalPayments, unit)}
+            value={formatCop(latest.totalPayments, unit, latest.trm)}
             hint={`en ${unitLabel}`}
           />
           <KpiCard
             label="Ingresos"
-            value={formatCop(latest.income, unit)}
-            hint={`Sueldo ${formatCop(latest.salary, unit)} · Extra ${formatCop(
-              latest.extraIncome,
-              unit
-            )}`}
+            value={formatCop(latest.income, unit, latest.trm)}
+            hint={`Sueldo ${formatCop(
+              latest.salary,
+              unit,
+              latest.trm
+            )} · Extra ${formatCop(latest.extraIncome, unit, latest.trm)}`}
           />
           <KpiCard
             label="Diferencia"
-            value={formatCop(latest.difference, unit)}
+            value={formatCop(latest.difference, unit, latest.trm)}
             hint={
               latest.difference >= 0 ? "Ingresos cubren la deuda" : "Deuda supera ingresos"
             }
@@ -740,9 +759,10 @@ export default function DeudasPage() {
             value={formatPercent(latest.cardUsage)}
             hint={
               latest.cardLimit > 0
-                ? `${formatCop(latest.cardBalance, unit)} de ${formatCop(
+                ? `${formatCop(latest.cardBalance, unit, latest.trm)} de ${formatCop(
                     latest.cardLimit,
-                    unit
+                    unit,
+                    latest.trm
                   )}`
                 : "Sin cupos registrados"
             }
@@ -904,9 +924,21 @@ export default function DeudasPage() {
                                 <EditableAmount
                                   active={activeCell === cellId}
                                   display={
-                                    empty ? "—" : formatMoney(value, debt.currency, unit)
+                                    empty
+                                      ? "—"
+                                      : formatMoney(
+                                          value,
+                                          debt.currency,
+                                          unit,
+                                          col.summary.trm
+                                        )
                                   }
-                                  initial={toEditString(value, debt.currency, unit)}
+                                  initial={toEditString(
+                                    value,
+                                    debt.currency,
+                                    unit,
+                                    col.summary.trm
+                                  )}
                                   dim={empty}
                                   textClassName={
                                     field === "payment"
@@ -945,14 +977,14 @@ export default function DeudasPage() {
                           col.key === currentKey ? "bg-brand/5" : ""
                         }`}
                       >
-                        {formatCop(col.summary.totalDebt, unit)}
+                        {formatCop(col.summary.totalDebt, unit, col.summary.trm)}
                       </td>
                       <td
                         className={`border-b border-border-subtle px-2 py-2 text-right text-xs font-bold text-brand ${
                           col.key === currentKey ? "bg-brand/5" : ""
                         }`}
                       >
-                        {formatCop(col.summary.totalPayments, unit)}
+                        {formatCop(col.summary.totalPayments, unit, col.summary.trm)}
                       </td>
                     </Fragment>
                   ))}
@@ -985,7 +1017,7 @@ export default function DeudasPage() {
                           ? formatUsd(Math.round(rawValue))
                           : rawValue === 0
                             ? "—"
-                            : formatCop(rawValue, unit);
+                            : formatCop(rawValue, unit, col.summary.trm);
                       return (
                         <td
                           key={col.key}
@@ -1008,7 +1040,7 @@ export default function DeudasPage() {
                                   ? col.params.trm === null
                                     ? ""
                                     : String(col.params.trm)
-                                  : toEditString(rawValue, "COP", unit)
+                                  : toEditString(rawValue, "COP", unit, col.summary.trm)
                               }
                               dim={
                                 inherited || (field !== "trm" && rawValue === 0)
@@ -1045,7 +1077,7 @@ export default function DeudasPage() {
                       }`}
                       title={`${col.summary.daysInMonth} dias en el mes`}
                     >
-                      {formatCop(col.summary.budgetPerDay, unit)}
+                      {formatCop(col.summary.budgetPerDay, unit, col.summary.trm)}
                     </td>
                   ))}
                 </tr>
@@ -1064,7 +1096,7 @@ export default function DeudasPage() {
                         }`}
                         title={`${col.summary.daysElapsed}/${col.summary.daysInMonth} dias transcurridos`}
                       >
-                        {formatCop(col.summary.spentPerDay, unit)}
+                        {formatCop(col.summary.spentPerDay, unit, col.summary.trm)}
                       </td>
                       <td
                         className={`border-b border-border-subtle px-2 py-1.5 text-right text-xs font-semibold ${
@@ -1094,7 +1126,7 @@ export default function DeudasPage() {
                         col.summary.difference >= 0 ? "text-brand" : "text-red-accent"
                       } ${col.key === currentKey ? "bg-brand/5" : ""}`}
                     >
-                      {formatCop(col.summary.difference, unit)}
+                      {formatCop(col.summary.difference, unit, col.summary.trm)}
                     </td>
                   ))}
                 </tr>
@@ -1125,7 +1157,9 @@ export default function DeudasPage() {
           </div>
           <div className="flex items-center justify-between border-t border-border-subtle px-4 py-2">
             <p className="text-[11px] text-text-muted">
-              Valores en {unitLabel} · haz clic en una celda para editarla
+              {unit === "miles"
+                ? "Valores en miles · haz clic en una celda para editarla"
+                : "Valores en USD · TRM del mes · haz clic en una celda para editarla"}
             </p>
             {saving && (
               <span className="flex items-center gap-1 text-[11px] text-text-muted">
@@ -1135,6 +1169,16 @@ export default function DeudasPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Notas del mes */}
+      {!loading && latestColumn && (
+        <MonthNotes
+          months={noteMonths}
+          unit={unit}
+          initialYear={latestColumn.year}
+          initialMonth={latestColumn.month}
+        />
       )}
 
       {/* Cupos de tarjetas */}
@@ -1156,10 +1200,10 @@ export default function DeudasPage() {
                       {card.name}
                     </span>
                     <span className="shrink-0 font-numbers text-xs text-text-secondary">
-                      {formatMoney(cell.balance, card.currency, unit)}
+                      {formatMoney(cell.balance, card.currency, unit, latest.trm)}
                       <span className="text-text-muted">
                         {" / "}
-                        {formatMoney(limit, card.currency, unit)}
+                        {formatMoney(limit, card.currency, unit, latest.trm)}
                       </span>
                       <span
                         className={`ml-2 font-semibold ${
@@ -1182,10 +1226,10 @@ export default function DeudasPage() {
               Total · {monthLabel(latest.year, latest.month)}
             </span>
             <span className="font-numbers text-xs text-text-secondary">
-              {formatCop(latest.cardBalance, unit)}
+              {formatCop(latest.cardBalance, unit, latest.trm)}
               <span className="text-text-muted">
                 {" / "}
-                {formatCop(latest.cardLimit, unit)}
+                {formatCop(latest.cardLimit, unit, latest.trm)}
               </span>
               <span
                 className={`ml-2 font-semibold ${
@@ -1282,7 +1326,7 @@ export default function DeudasPage() {
                     ? "5000"
                     : unit === "miles"
                       ? "12000"
-                      : "12000000"
+                      : "3000"
                 }
                 className="h-11 rounded-xl border-border-subtle bg-surface-raised/50 font-numbers"
               />
