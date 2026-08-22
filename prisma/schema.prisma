@@ -88,6 +88,7 @@ model User {
   debtMonths       DebtMonth[]
   debtNoteGroups   DebtNoteGroup[]
   loans            Loan[]
+  shortcutEvents   ShortcutEvent[]
 
   @@map("users")
 }
@@ -465,4 +466,22 @@ model LoanPeriod {
 
   @@unique([loanId, period])
   @@map("loan_periods")
+}
+
+model ShortcutEvent {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  receivedAt     DateTime @default(now()) @map("received_at")
+  rawBody        Json     @map("raw_body")
+  parsedMerchant String?  @map("parsed_merchant")
+  parsedAmount   Float?   @map("parsed_amount")
+  parsedCurrency String?  @map("parsed_currency")
+  amountSource   String?  @map("amount_source")
+  status         String
+  expenseId      String?  @map("expense_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, receivedAt])
+  @@map("shortcut_events")
 }

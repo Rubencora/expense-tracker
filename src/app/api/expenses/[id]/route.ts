@@ -78,6 +78,11 @@ export const PATCH = authMiddleware(async (req, { params, userId }) => {
       const newAmount = amount ?? expense.amount;
       const newCurrency = currency ?? expense.currency;
       data.amount = newAmount;
+      // An Apple Pay expense that arrived without amount carries a "(monto pendiente)"
+      // note; drop it once a real amount is set.
+      if (newAmount > 0 && expense.descriptionAi && /monto pendiente/i.test(expense.descriptionAi)) {
+        data.descriptionAi = expense.descriptionAi.replace(/\s*\(monto pendiente[^)]*\)/i, "").trim() || null;
+      }
       data.currency = newCurrency;
       data.amountUsd = await convertToUSD(newAmount, newCurrency);
     }

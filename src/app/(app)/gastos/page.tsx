@@ -76,6 +76,80 @@ const SPLIT_LABELS: Record<SplitTypeOption, string> = {
   solo: "Solo yo",
 };
 
+/** Inline input shown instead of the amount when an Apple Pay expense arrived with 0. */
+function PendingAmountInput({
+  currency,
+  onSave,
+}: {
+  currency: string;
+  onSave: (value: number) => Promise<void>;
+}) {
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const parse = (raw: string): number | null => {
+    let num = raw.replace(/[^0-9.,]/g, "");
+    if (!num) return null;
+    const lastDot = num.lastIndexOf(".");
+    const lastComma = num.lastIndexOf(",");
+    if (lastDot !== -1 && lastComma !== -1) {
+      num = lastComma > lastDot ? num.replace(/\./g, "").replace(",", ".") : num.replace(/,/g, "");
+    } else if (lastComma !== -1) {
+      num = num.length - lastComma - 1 === 3 ? num.replace(/,/g, "") : num.replace(",", ".");
+    } else if (lastDot !== -1 && (num.length - lastDot - 1 === 3 || (num.match(/\./g) ?? []).length > 1) && currency === "COP") {
+      num = num.replace(/\./g, "");
+    }
+    const n = Number(num);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  const submit = async () => {
+    const n = parse(value);
+    if (n === null) {
+      toast.error("Escribe un monto valido");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(n);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <span className="inline-flex items-center gap-1 rounded-md border border-amber-accent/30 bg-amber-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-accent">
+        Monto pendiente
+      </span>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+        className="flex items-center gap-1"
+      >
+        <input
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={currency === "COP" ? "45.000" : "12.34"}
+          className="h-8 w-28 rounded-lg border border-amber-accent/40 bg-surface-raised px-2 text-right font-numbers text-sm text-text-primary outline-none focus:border-amber-accent"
+          aria-label="Monto pendiente"
+        />
+        <span className="text-xs text-text-muted">{currency}</span>
+        <button
+          type="submit"
+          disabled={saving}
+          className="h-8 rounded-lg bg-amber-accent px-2.5 text-xs font-semibold text-black transition-opacity disabled:opacity-50"
+        >
+          {saving ? "…" : "OK"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function GastosPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -242,6 +316,23 @@ export default function GastosPage() {
       toast.success("Categoria actualizada");
     } catch {
       toast.error("Error al cambiar la categoria");
+    }
+  };
+
+  /** Saves the amount of an Apple Pay expense that arrived without one. */
+  const handleQuickAmount = async (expense: Expense, value: number) => {
+    try {
+      const updated = await apiClient<Expense>(`/api/expenses/${expense.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ amount: value, currency: expense.currency }),
+      });
+      setExpenses((prev) =>
+        prev.map((exp) => (exp.id === expense.id ? { ...exp, ...updated } : exp))
+      );
+      emitDataChanged("expenses");
+      toast.success(`${expense.merchant}: monto guardado`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al guardar el monto");
     }
   };
 
@@ -891,10 +982,17 @@ export default function GastosPage() {
                   )}
                 </div>
                 <div className="text-right ml-4 shrink-0">
-                  <p className="font-bold text-lg font-numbers text-text-primary">
-                    {formatAmount(expense.amount, expense.currency)}
-                  </p>
-                  {expense.currency !== "USD" && (
+                  {expense.amount === 0 && expense.user.id === currentUser?.id ? (
+                    <PendingAmountInput
+                      currency={expense.currency}
+                      onSave={(value) => handleQuickAmount(expense, value)}
+                    />
+                  ) : (
+                    <p className="font-bold text-lg font-numbers text-text-primary">
+                      {formatAmount(expense.amount, expense.currency)}
+                    </p>
+                  )}
+                  {expense.amount > 0 && expense.currency !== "USD" && (
                     <p className="text-xs font-numbers text-text-muted">
                       ${expense.amountUsd.toFixed(2)} USD
                     </p>

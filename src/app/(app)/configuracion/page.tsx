@@ -17,6 +17,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import ShortcutDiagnostics from "@/components/settings/ShortcutDiagnostics";
 import { Copy, RefreshCw, Check, Smartphone, Eye, EyeOff, MessageCircle, Unlink, Loader2, Webhook, Plus, Trash2, Bell, BellOff, Sun, Moon, Globe, Lock } from "lucide-react";
 
 interface UserProfile {
@@ -652,7 +653,11 @@ export default function ConfiguracionPage() {
           <p className="text-xs text-amber-accent">
             {t("settings.shortcutTroubleshoot")}
           </p>
+          <p className="mt-1 text-xs text-amber-accent">
+            {t("settings.shortcutAmountTip")}
+          </p>
         </div>
+        <ShortcutDiagnostics />
       </div>
     </div>
   );

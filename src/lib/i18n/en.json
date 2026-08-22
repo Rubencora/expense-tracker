@@ -93,6 +93,7 @@
     "shortcutBody": "Body (JSON): use transaction variables:",
     "shortcutBodyHint": "Tap each field and select the corresponding magic variable from the transaction",
     "shortcutTroubleshoot": "If the automation doesn't run: verify that \"Run Immediately\" is active and that the card you used is selected in the trigger.",
+    "shortcutAmountTip": "If expenses arrive without amount: in the body dictionary, the \"amount\" value must be of type Text using the transaction's Amount variable; \"currency\" with its Currency Code. If it still arrives as 0, reply to the Telegram message with the amount or type it in Expenses.",
     "changePassword": "Change password",
     "changePasswordDesc": "Update your account password",
     "currentPassword": "Current password",

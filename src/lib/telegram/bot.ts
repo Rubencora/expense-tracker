@@ -20,11 +20,63 @@ const pendingExpenses = new Map<
   }
 >();
 
-// Pending amount requests: expenses created with amount=0 waiting for real amount via Telegram
-const pendingAmountRequests = new Map<
-  string, // chatId
-  { expenseId: string; merchant: string; currency: "COP" | "USD" }
->();
+// Expenses created by the Apple Pay shortcut without an amount. They are looked up
+// in the database (not kept in memory) so a reply still works after a redeploy
+// or hours later.
+const PENDING_AMOUNT_WINDOW_DAYS = 30;
+
+async function findPendingAmountExpenses(userId: string) {
+  const since = new Date(Date.now() - PENDING_AMOUNT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  return prisma.expense.findMany({
+    where: { userId, source: "SHORTCUT", amount: 0, createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, merchant: true, currency: true, createdAt: true },
+    take: 8,
+  });
+}
+
+function parseBareAmount(text: string): number | null {
+  const cleaned = text.trim();
+  if (!/^[$\s]*-?[\d.,]+\s*(cop|usd|us\$|\$)?\s*$/i.test(cleaned)) return null;
+  let num = cleaned.replace(/[^0-9.,]/g, "");
+  const lastDot = num.lastIndexOf(".");
+  const lastComma = num.lastIndexOf(",");
+  if (lastDot !== -1 && lastComma !== -1) {
+    num = lastComma > lastDot ? num.replace(/\./g, "").replace(",", ".") : num.replace(/,/g, "");
+  } else if (lastComma !== -1) {
+    const after = num.length - lastComma - 1;
+    num = after === 3 ? num.replace(/,/g, "") : num.replace(",", ".");
+  } else if (lastDot !== -1) {
+    const after = num.length - lastDot - 1;
+    if (after === 3 || (num.match(/\./g) ?? []).length > 1) num = num.replace(/\./g, "");
+  }
+  const value = Number(num);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+async function applyPendingAmount(
+  expenseId: string,
+  amount: number
+): Promise<{ merchant: string; currency: string; formatted: string } | null> {
+  const expense = await prisma.expense.findUnique({
+    where: { id: expenseId },
+    select: { merchant: true, currency: true, descriptionAi: true, amount: true },
+  });
+  if (!expense) return null;
+  const amountUsd = await convertToUSD(amount, expense.currency);
+  await prisma.expense.update({
+    where: { id: expenseId },
+    data: {
+      amount,
+      amountUsd,
+      descriptionAi: expense.descriptionAi?.replace(/\s*\(monto pendiente[^)]*\)/i, "").trim() || null,
+    },
+  });
+  const formatted = expense.currency === "COP"
+    ? `$${amount.toLocaleString("es-CO")} COP`
+    : `$${amount.toFixed(2)} USD`;
+  return { merchant: expense.merchant, currency: expense.currency, formatted };
+}
 
 export async function generateLinkingCode(userId: string): Promise<string> {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -609,6 +661,33 @@ function createBot(): Bot {
       return;
     }
 
+    if (data.startsWith("setamt:")) {
+      const [, expenseId, amountStr] = data.split(":");
+      const amount = Number(amountStr);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return ctx.answerCallbackQuery({ text: "Monto invalido" });
+      }
+      if (expenseId === "new") {
+        await ctx.answerCallbackQuery();
+        await ctx.editMessageText(
+          `Ok. Para registrar un gasto nuevo escribe el comercio y el monto, por ejemplo: "Almuerzo ${amount.toLocaleString("es-CO")}"`
+        );
+        return;
+      }
+      try {
+        const result = await applyPendingAmount(expenseId, amount);
+        if (!result) {
+          return ctx.answerCallbackQuery({ text: "Gasto no encontrado" });
+        }
+        await ctx.answerCallbackQuery({ text: "Monto guardado" });
+        await ctx.editMessageText(`✅ Actualizado: ${result.merchant} → ${result.formatted}`);
+      } catch (error) {
+        console.error("[BOT] Error applying pending amount:", error);
+        await ctx.answerCallbackQuery({ text: "Error al guardar" });
+      }
+      return;
+    }
+
     if (data.startsWith("chcat:")) {
       const [, pendingId] = data.split(":");
       const pending = pendingExpenses.get(pendingId);
@@ -724,31 +803,37 @@ function createBot(): Bot {
       return ctx.reply("Cuenta no vinculada. Envia tu codigo de 6 digitos.");
     }
 
-    // Check if user has a pending amount request (from Apple Pay shortcut with amount=0)
-    const pendingAmount = pendingAmountRequests.get(chatId);
-    if (pendingAmount) {
-      const cleaned = text.replace(/[^0-9.,]/g, "");
-      const parsed = parseFloat(cleaned.replace(/,/g, ""));
-      if (cleaned && !isNaN(parsed) && parsed > 0) {
-        pendingAmountRequests.delete(chatId);
+    // A bare number answers a pending Apple Pay expense (amount=0) if there is one.
+    const bareAmount = parseBareAmount(text);
+    if (bareAmount !== null) {
+      const pending = await findPendingAmountExpenses(user.id);
+      if (pending.length === 1) {
         try {
-          const amountUsd = await convertToUSD(parsed, pendingAmount.currency);
-          await prisma.expense.update({
-            where: { id: pendingAmount.expenseId },
-            data: { amount: parsed, amountUsd },
-          });
-          const formatted = pendingAmount.currency === "COP"
-            ? `$${parsed.toLocaleString("es-CO")} COP`
-            : `$${parsed.toFixed(2)} USD`;
-          await ctx.reply(`✅ Actualizado: ${pendingAmount.merchant} → ${formatted}`);
+          const result = await applyPendingAmount(pending[0].id, bareAmount);
+          if (result) {
+            await ctx.reply(`✅ Actualizado: ${result.merchant} → ${result.formatted}`);
+            return;
+          }
         } catch (error) {
           console.error("[BOT] Error updating pending amount:", error);
           await ctx.reply("Error al actualizar el monto. Puedes editarlo desde la app.");
+          return;
         }
+      } else if (pending.length > 1) {
+        const keyboard = new InlineKeyboard();
+        pending.forEach((p, i) => {
+          const day = p.createdAt.toLocaleDateString("es-CO", { day: "2-digit", month: "short" });
+          keyboard.text(`${p.merchant.slice(0, 22)} · ${day}`, `setamt:${p.id}:${bareAmount}`);
+          if (i % 1 === 0) keyboard.row();
+        });
+        keyboard.text("❌ Ninguno (registrar gasto nuevo)", `setamt:new:${bareAmount}`);
+        await ctx.reply(
+          `Tienes ${pending.length} gastos de Apple Pay sin monto. ¿A cual corresponde ${bareAmount.toLocaleString("es-CO")}?`,
+          { reply_markup: keyboard }
+        );
         return;
       }
-      // If not a valid number, clear the pending and continue with normal flow
-      pendingAmountRequests.delete(chatId);
+      // No pending expense: fall through to the normal flow.
     }
 
     // Detect natural language questions and route to AI chat
@@ -1148,22 +1233,17 @@ export async function requestAmountViaTelegram(
 
     if (!user?.telegramChatId) return;
 
-    pendingAmountRequests.set(user.telegramChatId, { expenseId, merchant, currency });
-
-    // Auto-expire after 30 minutes
-    setTimeout(() => {
-      const current = pendingAmountRequests.get(user.telegramChatId!);
-      if (current?.expenseId === expenseId) {
-        pendingAmountRequests.delete(user.telegramChatId!);
-      }
-    }, 30 * 60 * 1000);
+    const pending = await findPendingAmountExpenses(userId);
+    const others = pending.filter((p) => p.id !== expenseId).length;
+    const example = currency === "COP" ? "35000" : "15.50";
 
     const bot = getBot();
     await bot.api.sendMessage(
       user.telegramChatId,
       `💳 *Gasto registrado sin monto*\n\n` +
-        `🏪 ${merchant}\n\n` +
-        `Responde con el monto (ej: \`35000\` o \`15.50\`):`,
+        `🏪 ${merchant} (${currency})\n\n` +
+        `Responde solo con el monto, ej: \`${example}\`` +
+        (others > 0 ? `\n\n_(Tienes ${others} mas sin monto; te preguntare a cual corresponde)_` : ""),
       { parse_mode: "Markdown" }
     );
   } catch (error) {

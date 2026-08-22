@@ -73,6 +73,7 @@ src/
     ai/
       classify.ts         # Clasificacion de gastos con OpenAI (gpt-4o-mini)
     currency.ts           # Parser COP/USD + conversion
+    shortcut-parse.ts     # Parser tolerante del payload del atajo de Apple Pay (montos como texto/anidados, monedas)
     debts.ts              # Calculos puros del Balance de deudas (replica las formulas del Excel)
     loans.ts              # Amortizacion francesa (PMT/IPMT/PPMT) + saldo real por modo (SCHEDULE | PAYMENTS)
     telegram/
@@ -130,6 +131,11 @@ Replica las hojas "Credito HoyTrabajas" y "Credito Carro" del Excel: tabla de am
 - Modo **SCHEDULE** (carro): cada mes paga la cuota; el usuario registra abonos extra a capital y, si quiere, el saldo real reportado por el banco (override). Saldo real_k = override ?? (saldo_{k-1} - amortizacion_k - extra_k); la proyeccion sigue hacia el futuro.
 - Modo **PAYMENTS** (apto, prestamo del empleador): el usuario registra el pago real de cada mes; saldo real = capital - Σ pagos. En el Excel los periodos 1-8 cuentan la amortizacion teorica como pago (el importador lo replica).
 - Resumen: pagado hasta hoy (%), saldo real (%), meses restantes y mes de pago total proyectado, intereses (a la fecha, proyectados hasta el pago total y totales del plazo).
+
+## Atajo de Apple Pay (POST /api/expenses/shortcut)
+- El payload de iOS es impredecible: claves con espacios, `amount` como numero, texto ("$12.34", "45.000", "US$ 12,34") u objeto `{ amount, currencyCode }`. `src/lib/shortcut-parse.ts` busca el monto/moneda en cualquier clave (amount/monto/total/valor...) y a cualquier profundidad.
+- Cada envio se guarda en `ShortcutEvent` (raw_body + lo parseado) y se ve en Configuracion > "Diagnostico del atajo" (`GET /api/expenses/shortcut/events`). No depender de `docker logs`: se pierden en cada deploy.
+- Si el monto llega en 0 (limitacion conocida de la automatizacion "Transaccion" de iOS con muchas tarjetas) el gasto se crea con amount=0 y nota "(monto pendiente)", se avisa por Telegram y push; el monto se completa respondiendo un numero al bot (flujo en BD, soporta varios pendientes con teclado inline) o con el input "Monto pendiente" en Gastos. Al guardar el monto se elimina la nota.
 
 ## Reglas de Moneda (IMPORTANTE)
 - Formato colombiano: punto como separador de miles -> `$53.000` = 53000 COP

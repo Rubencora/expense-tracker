@@ -93,6 +93,7 @@
     "shortcutBody": "Body (JSON): usa las variables de la transaccion:",
     "shortcutBodyHint": "Toca cada campo y selecciona la variable magica correspondiente de la transaccion",
     "shortcutTroubleshoot": "Si la automatizacion no se ejecuta: verifica que \"Ejecutar inmediatamente\" este activo y que la tarjeta que usaste este seleccionada en el trigger.",
+    "shortcutAmountTip": "Si los gastos llegan sin monto: en el diccionario del body, el valor de \"amount\" debe ser de tipo Texto con la variable Importe (Amount) de la transaccion; \"currency\" con su Codigo de moneda. Si aun asi llega 0, responde al mensaje de Telegram con el monto o escribelo en Gastos.",
     "changePassword": "Cambiar contrasena",
     "changePasswordDesc": "Actualiza tu contrasena de acceso",
     "currentPassword": "Contrasena actual",
