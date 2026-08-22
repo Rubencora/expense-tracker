@@ -40,6 +40,11 @@ enum IncomeFrequency {
   YEARLY
 }
 
+enum LoanTrackingMode {
+  SCHEDULE
+  PAYMENTS
+}
+
 enum DebtKind {
   CREDIT_CARD
   LOAN
@@ -82,6 +87,7 @@ model User {
   debts            Debt[]
   debtMonths       DebtMonth[]
   debtNoteGroups   DebtNoteGroup[]
+  loans            Loan[]
 
   @@map("users")
 }
@@ -421,4 +427,42 @@ model DebtNoteItem {
 
   @@index([groupId])
   @@map("debt_note_items")
+}
+
+model Loan {
+  id           String           @id @default(cuid())
+  userId       String           @map("user_id")
+  name         String
+  principal    Float
+  monthlyRate  Float            @map("monthly_rate")
+  termMonths   Int              @map("term_months")
+  startYear    Int              @map("start_year")
+  startMonth   Int              @map("start_month")
+  trackingMode LoanTrackingMode @default(SCHEDULE) @map("tracking_mode")
+  notes        String?
+  isActive     Boolean          @default(true) @map("is_active")
+  sortOrder    Int              @default(0) @map("sort_order")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periods LoanPeriod[]
+
+  @@index([userId])
+  @@map("loans")
+}
+
+model LoanPeriod {
+  id              String   @id @default(cuid())
+  loanId          String   @map("loan_id")
+  period          Int
+  payment         Float?
+  extraPayment    Float?   @map("extra_payment")
+  balanceOverride Float?   @map("balance_override")
+  note            String?
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@unique([loanId, period])
+  @@map("loan_periods")
 }

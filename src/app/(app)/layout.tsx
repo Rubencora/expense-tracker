@@ -16,6 +16,7 @@ import {
   Target,
   MessageSquare,
   CreditCard,
+  Landmark,
 } from "lucide-react";
 import OnboardingModal from "@/components/onboarding/OnboardingModal";
 
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { href: "/ingresos", labelKey: "nav.income", icon: Banknote },
   { href: "/metas", labelKey: "nav.goals", icon: Target },
   { href: "/deudas", labelKey: "nav.debts", icon: CreditCard },
+  { href: "/creditos", labelKey: "nav.loans", icon: Landmark },
   { href: "/chat", labelKey: "nav.chat", icon: MessageSquare },
   { href: "/categorias", labelKey: "nav.categories", icon: Tags },
   { href: "/espacios", labelKey: "nav.spaces", icon: Users },

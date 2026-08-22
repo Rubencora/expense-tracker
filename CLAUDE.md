@@ -24,6 +24,7 @@ App web de registro de gastos personales con bot de Telegram, captura automatica
 - `npm run lint` — linter
 - `npx tsx scripts/screenshot.ts` — tomar screenshots de todas las paginas
 - `npx tsx scripts/import-debts-xlsx.ts --file "../Deudas Ruben 2026.xlsx" --email <email> [--dry-run]` — importar el historico de deudas desde el Excel (idempotente)
+- `npx tsx scripts/import-loans-xlsx.ts --file "../Estado Credito Apto Ruben Cordoba 2025.xlsx" --email <email> [--dry-run]` — importar los creditos (apto y carro) desde el Excel (idempotente)
 
 ## Screenshots (Puppeteer)
 El proyecto incluye un script de Puppeteer para capturar screenshots automaticamente.
@@ -73,6 +74,7 @@ src/
       classify.ts         # Clasificacion de gastos con OpenAI (gpt-4o-mini)
     currency.ts           # Parser COP/USD + conversion
     debts.ts              # Calculos puros del Balance de deudas (replica las formulas del Excel)
+    loans.ts              # Amortizacion francesa (PMT/IPMT/PPMT) + saldo real por modo (SCHEDULE | PAYMENTS)
     telegram/
       bot.ts              # Bot de Telegram con grammy + OpenAI
   components/
@@ -99,6 +101,8 @@ prisma/
 - **DebtEntry:** id, debt_id, year, month, balance (saldo), payment (pago) — unico por (debt_id, year, month); montos en la moneda de la deuda, unidades completas
 - **DebtMonth:** id, user_id, year, month, salary (sueldo), extra_income, trm (COP por USD, opcional: se arrastra el ultimo valor explicito) — unico por (user_id, year, month)
 - **DebtNoteGroup / DebtNoteItem:** bloques libres por mes ("Notas del mes": titulo + lineas label/amount, total calculado), como las notas debajo de cada columna del Excel
+- **Loan:** id, user_id, name, principal, monthly_rate (0.011 = 1,1% mensual), term_months, start_year/start_month (periodo 1), tracking_mode (SCHEDULE | PAYMENTS), notes, is_active, sort_order
+- **LoanPeriod:** id, loan_id, period (1..n), payment (pago real), extra_payment (abono extra a capital), balance_override (saldo real reportado), note — unico por (loan_id, period)
 
 **Nota Prisma 7:** No usar `url` en datasource del schema. La URL se configura en `prisma.config.ts`. Los campos con `@map` se acceden por su nombre Prisma (ej: `createdBy` no `createdById`). Las relaciones requieren `connect` en vez de IDs directos en `create()`.
 
@@ -119,6 +123,13 @@ Replica la hoja "Balance" del Excel historico: una fila por deuda y, por cada me
 - Diferencia = Ingresos - Deuda total; Consumo TC = suma saldos tarjetas con cupo / suma cupos
 - La UI tiene toggle **Miles | USD**: en "Miles" se escribe y se muestra en miles de COP (4862 = $4.862.000), como en el Excel; en "USD" se muestra/escribe en dolares convertidos con la TRM del mes. En BD siempre se guardan unidades completas en la moneda de la deuda.
 - Seccion "Notas del mes" (`src/components/debts/MonthNotes.tsx`, API `/api/debts/notes*`): grupos editables por mes con total automatico y "Copiar del mes anterior".
+
+## Creditos (pagina /creditos)
+Replica las hojas "Credito HoyTrabajas" y "Credito Carro" del Excel: tabla de amortizacion francesa + estado real.
+- Cuota = PMT(i, n, P); Interes_k = -IPMT; Amortizacion_k = -PPMT; Saldo teorico_k = Saldo_{k-1} - Amortizacion_k; EA = (1+i)^12 - 1
+- Modo **SCHEDULE** (carro): cada mes paga la cuota; el usuario registra abonos extra a capital y, si quiere, el saldo real reportado por el banco (override). Saldo real_k = override ?? (saldo_{k-1} - amortizacion_k - extra_k); la proyeccion sigue hacia el futuro.
+- Modo **PAYMENTS** (apto, prestamo del empleador): el usuario registra el pago real de cada mes; saldo real = capital - Σ pagos. En el Excel los periodos 1-8 cuentan la amortizacion teorica como pago (el importador lo replica).
+- Resumen: pagado hasta hoy (%), saldo real (%), meses restantes y mes de pago total proyectado, intereses (a la fecha, proyectados hasta el pago total y totales del plazo).
 
 ## Reglas de Moneda (IMPORTANTE)
 - Formato colombiano: punto como separador de miles -> `$53.000` = 53000 COP
