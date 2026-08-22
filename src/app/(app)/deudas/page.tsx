@@ -348,6 +348,44 @@ export default function DeudasPage() {
     const stored = Number(window.localStorage.getItem(FUTURE_MONTHS_KEY) ?? "0");
     return Number.isFinite(stored) ? Math.max(0, Math.min(12, stored)) : 0;
   });
+  /**
+   * Removes the last planning (future) column. If that month already holds
+   * data (saldos/pagos, sueldo/TRM, notas) the user must confirm and the data
+   * is deleted; an empty month is removed silently.
+   */
+  const removeLastFutureMonth = async () => {
+    if (futureMonths <= 0) return;
+    const now = new Date();
+    const target = addMonths(now.getFullYear(), now.getMonth() + 1, futureMonths);
+    try {
+      const usage = await apiClient<{
+        entries: number;
+        hasParams: boolean;
+        noteGroups: number;
+        hasData: boolean;
+      }>(`/api/debts/months?year=${target.year}&month=${target.month}`);
+      if (usage.hasData) {
+        const parts: string[] = [];
+        if (usage.entries > 0) parts.push(`${usage.entries} saldo(s)/pago(s)`);
+        if (usage.hasParams) parts.push("sueldo/ingresos/TRM");
+        if (usage.noteGroups > 0) parts.push(`${usage.noteGroups} grupo(s) de notas`);
+        const ok = window.confirm(
+          `La columna ${monthLabel(target.year, target.month)} tiene datos (${parts.join(", ")}).\n\n` +
+            "Se borraran definitivamente. ¿Quitar la columna y borrar sus datos?"
+        );
+        if (!ok) return;
+        await apiClient(`/api/debts/months`, {
+          method: "DELETE",
+          body: JSON.stringify({ year: target.year, month: target.month }),
+        });
+        toast.success(`Columna ${monthLabel(target.year, target.month)} eliminada`);
+      }
+      changeFutureMonths(-1);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo quitar el mes");
+    }
+  };
+
   const changeFutureMonths = (delta: number) => {
     setFutureMonths((prev) => {
       const next = Math.max(0, Math.min(12, prev + delta));
@@ -725,8 +763,8 @@ export default function DeudasPage() {
                 <span className="px-1 font-numbers text-xs text-brand">+{futureMonths}</span>
                 <button
                   type="button"
-                  onClick={() => changeFutureMonths(-1)}
-                  title="Quitar el ultimo mes futuro"
+                  onClick={removeLastFutureMonth}
+                  title="Quitar el ultimo mes futuro (pide confirmacion si tiene datos)"
                   className="flex h-8 items-center rounded-lg px-2 text-text-muted transition-colors hover:bg-surface-overlay hover:text-text-primary"
                 >
                   <CalendarMinus className="h-4 w-4" />
