@@ -642,7 +642,7 @@ export default function ConfiguracionPage() {
                 <li>{t("settings.shortcutMethod")} <strong className="text-text-secondary">POST</strong></li>
                 <li>Headers: <code className="bg-surface-overlay px-2 py-0.5 rounded-md text-xs font-mono text-text-muted">Authorization: Bearer {maskedToken}</code></li>
                 <li>{t("settings.shortcutBody")}
-                  <code className="bg-surface-overlay px-2 py-0.5 rounded-md text-xs font-mono text-text-muted block mt-1">{`{ "merchant": [Comercio], "amount": [Cantidad], "currency": [Codigo de moneda] }`}</code>
+                  <code className="bg-surface-overlay px-2 py-0.5 rounded-md text-xs font-mono text-text-muted block mt-1">{`{ "merchant": [Shortcut Input > Merchant], "amount": [Shortcut Input > Amount] }`}</code>
                   <span className="text-xs text-text-muted block mt-1">{t("settings.shortcutBodyHint")}</span>
                 </li>
               </ul>
