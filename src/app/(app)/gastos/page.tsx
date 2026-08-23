@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiClient, getUser } from "@/lib/api-client";
 import { emitDataChanged } from "@/lib/data-events";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Trash2, Download, Upload, Loader2, Split, Pencil } from "lucide-react";
+import { Plus, Trash2, Download, Upload, Loader2, Split, Pencil, AlertCircle } from "lucide-react";
+import PendingAmountsQueue from "@/components/expenses/PendingAmountsQueue";
 import * as XLSX from "xlsx";
 
 interface Category {
@@ -151,7 +153,10 @@ function PendingAmountInput({
 }
 
 export default function GastosPage() {
+  const searchParams = useSearchParams();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [showPendingQueue, setShowPendingQueue] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [spaces, setSpaces] = useState<SpaceInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,6 +272,20 @@ export default function GastosPage() {
   useEffect(() => {
     fetchExpenses();
   }, [fetchExpenses]);
+
+  const refreshPendingCount = useCallback(() => {
+    apiClient<{ count: number }>("/api/expenses/pending")
+      .then((res) => setPendingCount(res.count))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshPendingCount();
+  }, [refreshPendingCount]);
+
+  useEffect(() => {
+    if (searchParams.get("pendientes") === "1") setShowPendingQueue(true);
+  }, [searchParams]);
 
   // Auto-suggest tags when merchant is typed (debounced)
   useEffect(() => {
@@ -564,6 +583,35 @@ export default function GastosPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {pendingCount > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-accent/30 bg-amber-accent/10 px-4 py-3">
+          <div className="flex items-center gap-2 text-amber-accent">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <p className="text-sm">
+              Tienes <strong>{pendingCount}</strong> gasto{pendingCount === 1 ? "" : "s"} sin monto (Apple Pay).
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setShowPendingQueue(true)}
+            className="shrink-0 bg-amber-accent text-black hover:bg-amber-accent/90"
+          >
+            Completar ahora
+          </Button>
+        </div>
+      )}
+
+      <PendingAmountsQueue
+        open={showPendingQueue}
+        onOpenChange={(open) => {
+          setShowPendingQueue(open);
+          if (!open) {
+            refreshPendingCount();
+            fetchExpenses();
+          }
+        }}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
