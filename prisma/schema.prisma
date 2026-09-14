@@ -355,6 +355,7 @@ model Debt {
   kind        DebtKind @default(OTHER)
   currency    String   @default("COP")
   creditLimit Float?   @map("credit_limit")
+  isNegative  Boolean  @default(false) @map("is_negative")
   isActive    Boolean  @default(true) @map("is_active")
   sortOrder   Int      @default(0) @map("sort_order")
   notes       String?

@@ -17,6 +17,9 @@ export interface DebtLike {
   kind: DebtKind;
   currency: string; // "COP" | "USD"
   creditLimit: number | null;
+  /** When true, this account's balance subtracts from DEUDA TOTAL instead of
+   *  adding to it (e.g. a loan you made to someone — an asset, not a liability). */
+  isNegative: boolean;
   isActive: boolean;
   sortOrder: number;
 }
@@ -161,13 +164,14 @@ export function computeMonthSummary(args: {
 
   for (const debt of debts) {
     const entry = byDebt.get(debt.id);
+    const sign = debt.isNegative ? -1 : 1;
     const balanceCop = entry ? toCop(entry.balance, debt.currency, trm) : 0;
     const paymentCop = entry ? toCop(entry.payment, debt.currency, trm) : 0;
-    totalDebt += balanceCop;
+    totalDebt += sign * balanceCop;
     totalPayments += paymentCop;
     if (debt.kind === "CREDIT_CARD" && debt.isActive && debt.creditLimit && debt.creditLimit > 0) {
       cardLimit += toCop(debt.creditLimit, debt.currency, trm);
-      cardBalance += balanceCop;
+      cardBalance += sign * balanceCop;
     }
   }
 

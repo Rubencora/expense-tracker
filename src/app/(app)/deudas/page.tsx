@@ -46,6 +46,7 @@ import {
   CalendarPlus,
   CreditCard,
   Loader2,
+  Minus,
   MoreHorizontal,
   Plus,
   Scale,
@@ -69,6 +70,8 @@ interface Debt {
   kind: DebtKind;
   currency: Currency;
   creditLimit: number | null;
+  /** When true, this account's balance subtracts from DEUDA TOTAL (e.g. money owed to you). */
+  isNegative: boolean;
   isActive: boolean;
   sortOrder: number;
   notes: string | null;
@@ -412,6 +415,7 @@ export default function DeudasPage() {
   const [formKind, setFormKind] = useState<DebtKind>("CREDIT_CARD");
   const [formCurrency, setFormCurrency] = useState<Currency>("COP");
   const [formLimit, setFormLimit] = useState("");
+  const [formIsNegative, setFormIsNegative] = useState(false);
   const [formNotes, setFormNotes] = useState("");
 
   const currentKey = useMemo(() => {
@@ -596,6 +600,7 @@ export default function DeudasPage() {
     setFormKind("CREDIT_CARD");
     setFormCurrency("COP");
     setFormLimit("");
+    setFormIsNegative(false);
     setFormNotes("");
   };
 
@@ -612,6 +617,7 @@ export default function DeudasPage() {
     setFormLimit(
       debt.creditLimit ? toEditString(debt.creditLimit, debt.currency, unit, formTrm) : ""
     );
+    setFormIsNegative(debt.isNegative);
     setFormNotes(debt.notes ?? "");
     setDialogOpen(true);
   };
@@ -629,6 +635,7 @@ export default function DeudasPage() {
         kind: formKind,
         currency: formCurrency,
         creditLimit,
+        isNegative: formIsNegative,
         notes: formNotes.trim() || null,
       };
 
@@ -663,6 +670,22 @@ export default function DeudasPage() {
         body: JSON.stringify({ isActive: !debt.isActive }),
       });
       toast.success(debt.isActive ? "Deuda desactivada" : "Deuda activada");
+      emitDataChanged("debts");
+      await fetchBalance(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al actualizar");
+    }
+  };
+
+  const handleToggleSign = async (debt: Debt) => {
+    try {
+      await apiClient<Debt>(`/api/debts/${debt.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isNegative: !debt.isNegative }),
+      });
+      toast.success(
+        debt.isNegative ? `${debt.name} vuelve a sumar al total` : `${debt.name} ahora resta del total`
+      );
       emitDataChanged("debts");
       await fetchBalance(false);
     } catch (err) {
@@ -950,6 +973,31 @@ export default function DeudasPage() {
                   >
                     <td className="sticky left-0 z-20 min-w-[150px] w-[210px] border-b border-r border-border-subtle bg-surface px-3 py-1.5">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSign(debt)}
+                          aria-label={
+                            debt.isNegative
+                              ? `${debt.name}: resta del total, clic para que sume`
+                              : `${debt.name}: suma al total, clic para que reste`
+                          }
+                          title={
+                            debt.isNegative
+                              ? "Resta del total (clic para sumar)"
+                              : "Suma al total (clic para restar)"
+                          }
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                            debt.isNegative
+                              ? "border-red-accent/40 bg-red-accent/10 text-red-accent"
+                              : "border-border-subtle text-text-muted hover:border-border-default hover:text-text-secondary"
+                          }`}
+                        >
+                          {debt.isNegative ? (
+                            <Minus className="h-2.5 w-2.5" />
+                          ) : (
+                            <Plus className="h-2.5 w-2.5" />
+                          )}
+                        </button>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="truncate text-xs font-medium text-text-primary">
@@ -958,6 +1006,11 @@ export default function DeudasPage() {
                             {debt.currency === "USD" && (
                               <span className="shrink-0 rounded bg-amber-accent/10 px-1 py-0.5 text-[9px] font-semibold text-amber-accent">
                                 USD
+                              </span>
+                            )}
+                            {debt.isNegative && (
+                              <span className="shrink-0 rounded bg-red-accent/10 px-1 py-0.5 text-[9px] font-semibold text-red-accent">
+                                RESTA
                               </span>
                             )}
                           </div>
@@ -1057,6 +1110,18 @@ export default function DeudasPage() {
                     })}
                   </tr>
                 ))}
+                <tr>
+                  <td colSpan={1 + columns.length * 2} className="border-b border-border-subtle bg-surface p-0">
+                    <button
+                      type="button"
+                      onClick={openCreate}
+                      className="sticky left-0 flex w-[210px] items-center gap-1.5 px-3 py-1.5 text-[11px] text-text-muted transition-colors hover:bg-surface-raised/60 hover:text-brand"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Agregar deuda
+                    </button>
+                  </td>
+                </tr>
               </tbody>
 
               <tfoot className="font-numbers">
@@ -1428,6 +1493,23 @@ export default function DeudasPage() {
               <p className="text-[11px] text-text-muted">
                 Solo aplica a tarjetas de credito; se usa para calcular el % de consumo.
               </p>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-xl border border-border-subtle bg-surface-raised/50 px-3 py-2.5">
+              <Switch
+                id="debt-is-negative"
+                checked={formIsNegative}
+                onCheckedChange={setFormIsNegative}
+                className="scale-75"
+              />
+              <div>
+                <Label htmlFor="debt-is-negative" className="text-xs text-text-secondary">
+                  Resta del total
+                </Label>
+                <p className="text-[11px] text-text-muted">
+                  Para cuentas a tu favor (ej. un prestamo que te deben)
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">

@@ -8,6 +8,7 @@ const createDebtSchema = z.object({
   kind: z.enum(["CREDIT_CARD", "LOAN", "PERSONAL", "TAX", "OTHER"]).default("OTHER"),
   currency: z.enum(["COP", "USD"]).default("COP"),
   creditLimit: z.number().nonnegative().nullable().optional(),
+  isNegative: z.boolean().optional().default(false),
   isActive: z.boolean().optional().default(true),
   notes: z.string().max(500).nullable().optional(),
 });
@@ -36,7 +37,7 @@ export const POST = authMiddleware(async (req, { userId }) => {
       );
     }
 
-    const { name, kind, currency, creditLimit, isActive, notes } = parsed.data;
+    const { name, kind, currency, creditLimit, isNegative, isActive, notes } = parsed.data;
 
     const last = await prisma.debt.findFirst({
       where: { userId },
@@ -51,6 +52,7 @@ export const POST = authMiddleware(async (req, { userId }) => {
         kind,
         currency,
         creditLimit: creditLimit ?? null,
+        isNegative,
         isActive,
         notes: notes || null,
         sortOrder: (last?.sortOrder ?? -1) + 1,

@@ -53,6 +53,7 @@ export async function getLatestDebtSummary(userId: string): Promise<OutstandingD
       kind: d.kind as DebtKind,
       currency: d.currency,
       creditLimit: d.creditLimit,
+      isNegative: d.isNegative,
       isActive: d.isActive,
       sortOrder: d.sortOrder,
     })),

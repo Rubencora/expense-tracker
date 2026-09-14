@@ -8,6 +8,7 @@ const updateDebtSchema = z.object({
   kind: z.enum(["CREDIT_CARD", "LOAN", "PERSONAL", "TAX", "OTHER"]).optional(),
   currency: z.enum(["COP", "USD"]).optional(),
   creditLimit: z.number().nonnegative().nullable().optional(),
+  isNegative: z.boolean().optional(),
   isActive: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
   notes: z.string().max(500).nullable().optional(),
@@ -31,12 +32,13 @@ export const PATCH = authMiddleware(async (req, { params, userId }) => {
       return NextResponse.json({ error: "Deuda no encontrada" }, { status: 404 });
     }
 
-    const { name, kind, currency, creditLimit, isActive, sortOrder, notes } = parsed.data;
+    const { name, kind, currency, creditLimit, isNegative, isActive, sortOrder, notes } = parsed.data;
     const data: Record<string, unknown> = {};
     if (name !== undefined) data.name = name;
     if (kind !== undefined) data.kind = kind;
     if (currency !== undefined) data.currency = currency;
     if (creditLimit !== undefined) data.creditLimit = creditLimit;
+    if (isNegative !== undefined) data.isNegative = isNegative;
     if (isActive !== undefined) data.isActive = isActive;
     if (sortOrder !== undefined) data.sortOrder = sortOrder;
     if (notes !== undefined) data.notes = notes;

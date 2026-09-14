@@ -69,6 +69,7 @@ export const GET = authMiddleware(async (req, { userId }) => {
         kind: d.kind as DebtKind,
         currency: d.currency,
         creditLimit: d.creditLimit,
+        isNegative: d.isNegative,
         isActive: d.isActive,
         sortOrder: d.sortOrder,
       })),
