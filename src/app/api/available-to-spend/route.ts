@@ -64,17 +64,12 @@ export const GET = authMiddleware(async (req, { userId }) => {
     0
   );
 
-  const availableToSpend = monthlyIncome - outstandingDebtUsd - monthlyExpenses - monthlySavings;
-
-  const daysRemaining = daysRemainingInMonth(now);
-  const dailyBudget = availableToSpend > 0 ? availableToSpend / daysRemaining : 0;
-
-  // 6. COP-consistent version. Sueldo/Deuda vienen en COP anclados a la TRM
-  // del mes en Deudas; convertir availableToSpend (USD) a COP con la tasa de
-  // mercado del dia desalinearia el numero de "Sueldo - Deuda - Gasto -
-  // Ahorro" en COP. Los gastos se suman en su monto COP real (la mayoria se
-  // registran nativamente en COP); los ahorros solo tienen amountUsd, asi
-  // que usan la TRM de Deudas como mejor aproximacion.
+  // 6. COP es la base, USD se deriva de ahi (igual que en /deudas). Sueldo/
+  // Deuda vienen de Deudas en COP anclados a la TRM de ese mes; los gastos
+  // se suman en su monto COP real (la mayoria se registran nativamente en
+  // COP). Restar amountUsd por separado (cada uno a su propia tasa
+  // historica) y luego convertir ese USD a COP con la tasa del dia daria un
+  // numero que no cuadra entre las dos unidades al cambiar el toggle.
   const trm = debtSummary?.trm ?? 0;
   const monthlyExpensesCop = monthExpensesList.reduce(
     (sum, e) => sum + (e.currency === "COP" ? e.amount : trm > 0 ? e.amountUsd * trm : 0),
@@ -84,6 +79,12 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const availableToSpendCop = debtSummary
     ? debtSummary.incomeCop - debtSummary.totalDebtCop - monthlyExpensesCop - monthlySavingsCop
     : 0;
+  const availableToSpend = trm > 0
+    ? availableToSpendCop / trm
+    : monthlyIncome - outstandingDebtUsd - monthlyExpenses - monthlySavings;
+
+  const daysRemaining = daysRemainingInMonth(now);
+  const dailyBudget = availableToSpend > 0 ? availableToSpend / daysRemaining : 0;
   const dailyBudgetCop = availableToSpendCop > 0 ? availableToSpendCop / daysRemaining : 0;
 
   // 7. Return all values

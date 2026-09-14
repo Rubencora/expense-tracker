@@ -52,29 +52,29 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const monthlyIncome = debtSummary?.incomeUsd ?? 0;
   const outstandingDebtUsd = debtSummary?.totalDebtUsd ?? 0;
 
-  // --- Derived metrics ---
-  const balance = monthlyIncome - outstandingDebtUsd - monthlyExpenses;
-  const savingsRate = balance > 0 && monthlyIncome > 0 ? (balance / monthlyIncome) * 100 : 0;
-  const expenseRatio = monthlyIncome > 0 ? monthlyExpenses / monthlyIncome : 0;
-  const remaining = daysRemainingInMonth(now);
-  const dailyAvailable = remaining > 0 ? balance / remaining : 0;
-  const lastMonthRatio = monthlyIncome > 0 ? lastMonthExpenses / monthlyIncome : 0;
-
-  // --- COP-consistent balance ---
-  // Sueldo/Deuda ya vienen en COP anclados a la TRM de ese mes en Deudas.
-  // Convertir el balance en USD a COP con la tasa de mercado del dia (que
-  // puede diferir mucho de esa TRM) produciria un numero que no cuadra con
-  // "Sueldo - Deuda - Gasto" en COP. Los gastos se suman en su monto COP
-  // real (la mayoria se registran nativamente en COP, sin conversion) en
-  // vez de reconstruirlos desde amountUsd con cualquier tasa; solo los
-  // gastos en USD usan la TRM de Deudas como mejor aproximacion.
+  // --- Balance: COP is the ground truth, USD is derived from it ---
+  // Sueldo/Deuda vienen de Deudas en COP, anclados a la TRM de ese mes, y
+  // los gastos se suman en su monto COP real (la mayoria se registran
+  // nativamente en COP). Si el balance en USD se calculara aparte restando
+  // amountUsd de cada gasto (cada uno convertido a SU PROPIA tasa historica
+  // al momento de registrarse), el USD resultante no correspondería a
+  // ninguna tasa fija respecto al COP — el toggle de moneda mostraria dos
+  // numeros que no cuadran entre si. En vez de eso: se calcula balanceCop
+  // primero y el USD se deriva dividiendo por la TRM de Deudas, igual que
+  // hace el toggle Miles/USD en /deudas — un solo numero, dos unidades.
   const trm = debtSummary?.trm ?? 0;
   const monthlyExpensesCop = currentMonthExpensesList.reduce(
     (sum, e) => sum + (e.currency === "COP" ? e.amount : trm > 0 ? e.amountUsd * trm : 0),
     0
   );
   const balanceCop = debtSummary ? debtSummary.incomeCop - debtSummary.totalDebtCop - monthlyExpensesCop : 0;
+  const balance = trm > 0 ? balanceCop / trm : monthlyIncome - outstandingDebtUsd - monthlyExpenses;
+  const savingsRate = balance > 0 && monthlyIncome > 0 ? (balance / monthlyIncome) * 100 : 0;
+  const expenseRatio = monthlyIncome > 0 ? monthlyExpenses / monthlyIncome : 0;
+  const remaining = daysRemainingInMonth(now);
+  const dailyAvailable = remaining > 0 ? balance / remaining : 0;
   const dailyAvailableCop = remaining > 0 ? balanceCop / remaining : 0;
+  const lastMonthRatio = monthlyIncome > 0 ? lastMonthExpenses / monthlyIncome : 0;
 
   // --- Monthly history (last 6 months) ---
   // Nota: el Sueldo/Deuda de Deudas solo se conoce para el mes mas reciente;
