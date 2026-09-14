@@ -27,7 +27,7 @@ export const PATCH = authMiddleware(async (req, { params, userId }) => {
       data: parsed.data,
       include: { items: { orderBy: { sortOrder: "asc" } } },
     });
-    return NextResponse.json({ ...updated, total: updated.items.reduce((s, i) => s + i.amount, 0) });
+    return NextResponse.json({ ...updated, total: updated.items.reduce((s, i) => s + (i.isNegative ? -i.amount : i.amount), 0) });
   } catch (error) {
     console.error("Update note group error:", error);
     return NextResponse.json({ error: "Error al actualizar el grupo" }, { status: 500 });

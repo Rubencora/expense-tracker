@@ -69,7 +69,7 @@ export const POST = authMiddleware(async (req, { userId }) => {
     return NextResponse.json({
       copied,
       skipped: source.length - copied,
-      groups: groups.map((g) => ({ ...g, total: g.items.reduce((s, i) => s + i.amount, 0) })),
+      groups: groups.map((g) => ({ ...g, total: g.items.reduce((s, i) => s + (i.isNegative ? -i.amount : i.amount), 0) })),
     });
   } catch (error) {
     console.error("Copy note groups error:", error);

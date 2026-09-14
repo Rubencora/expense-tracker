@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Copy, MoreHorizontal, Plus, StickyNote, Trash2 } from "lucide-react";
+import { Copy, Minus, MoreHorizontal, Plus, StickyNote, Trash2 } from "lucide-react";
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */
@@ -39,7 +39,15 @@ interface NoteItem {
   id: string;
   label: string;
   amount: number;
+  /** When true, this line subtracts from the group's total instead of adding to it
+   *  (e.g. "En Bacos Disponible": money already set aside, reduces what's still owed). */
+  isNegative: boolean;
   sortOrder: number;
+}
+
+/** Signed sum of a group's items, respecting each item's isNegative flag. */
+function sumItems(items: NoteItem[]): number {
+  return items.reduce((acc, item) => acc + (item.isNegative ? -item.amount : item.amount), 0);
 }
 
 interface NoteGroup {
@@ -402,7 +410,7 @@ export function MonthNotes({ months, unit, initialYear, initialMonth }: MonthNot
   const updateItem = async (
     group: NoteGroup,
     item: NoteItem,
-    patch: Partial<Pick<NoteItem, "label" | "amount">>
+    patch: Partial<Pick<NoteItem, "label" | "amount" | "isNegative">>
   ) => {
     const snapshot = groups;
     setGroups((prev) =>
@@ -447,11 +455,7 @@ export function MonthNotes({ months, unit, initialYear, initialMonth }: MonthNot
   const trm = current?.trm ?? 0;
 
   const monthTotal = useMemo(
-    () =>
-      groups.reduce(
-        (sum, group) => sum + group.items.reduce((acc, item) => acc + item.amount, 0),
-        0
-      ),
+    () => groups.reduce((sum, group) => sum + sumItems(group.items), 0),
     [groups]
   );
 
@@ -503,7 +507,8 @@ export function MonthNotes({ months, unit, initialYear, initialMonth }: MonthNot
           <div>
             <h2 className="text-sm font-semibold text-text-primary">Notas del mes</h2>
             <p className="mt-0.5 text-xs text-text-muted">
-              Bloques libres por mes, como debajo de cada columna en tu Excel
+              Bloques libres por mes, como debajo de cada columna en tu Excel · toca el{" "}
+              <span className="text-text-secondary">+/−</span> de una linea para que reste al total
             </p>
           </div>
         </div>
@@ -528,7 +533,7 @@ export function MonthNotes({ months, unit, initialYear, initialMonth }: MonthNot
         <>
           <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {groups.map((group) => {
-              const total = group.items.reduce((acc, item) => acc + item.amount, 0);
+              const total = sumItems(group.items);
               return (
                 <div
                   key={group.id}
@@ -582,6 +587,31 @@ export function MonthNotes({ months, unit, initialYear, initialMonth }: MonthNot
                   <div className="mt-1 space-y-0.5">
                     {group.items.map((item) => (
                       <div key={item.id} className="group/item flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => updateItem(group, item, { isNegative: !item.isNegative })}
+                          aria-label={
+                            item.isNegative
+                              ? `${item.label}: resta al total, clic para que sume`
+                              : `${item.label}: suma al total, clic para que reste`
+                          }
+                          title={
+                            item.isNegative
+                              ? "Resta al total (clic para sumar)"
+                              : "Suma al total (clic para restar)"
+                          }
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                            item.isNegative
+                              ? "border-red-accent/40 bg-red-accent/10 text-red-accent"
+                              : "border-border-subtle text-text-muted hover:border-border-default hover:text-text-secondary"
+                          }`}
+                        >
+                          {item.isNegative ? (
+                            <Minus className="h-2.5 w-2.5" />
+                          ) : (
+                            <Plus className="h-2.5 w-2.5" />
+                          )}
+                        </button>
                         <div className="min-w-0 flex-1">
                           <InlineEdit
                             active={activeField === `label:${item.id}`}
@@ -603,12 +633,14 @@ export function MonthNotes({ months, unit, initialYear, initialMonth }: MonthNot
                         <div className="w-24 shrink-0">
                           <InlineEdit
                             active={activeField === `amount:${item.id}`}
-                            display={formatAmount(item.amount, unit, trm)}
+                            display={`${item.isNegative ? "−" : ""}${formatAmount(item.amount, unit, trm)}`}
                             initial={toEditString(item.amount, unit, trm)}
                             align="right"
                             inputMode="decimal"
                             textClassName={`font-numbers tabular-nums ${
-                              item.amount < 0 ? "text-red-accent" : "text-text-secondary"
+                              item.isNegative || item.amount < 0
+                                ? "text-red-accent"
+                                : "text-text-secondary"
                             }`}
                             onActivate={() => setActiveField(`amount:${item.id}`)}
                             onCancel={() =>

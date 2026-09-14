@@ -418,11 +418,12 @@ model DebtNoteGroup {
 }
 
 model DebtNoteItem {
-  id        String @id @default(cuid())
-  groupId   String @map("group_id")
-  label     String
-  amount    Float  @default(0)
-  sortOrder Int    @default(0) @map("sort_order")
+  id         String  @id @default(cuid())
+  groupId    String  @map("group_id")
+  label      String
+  amount     Float   @default(0)
+  isNegative Boolean @default(false) @map("is_negative")
+  sortOrder  Int     @default(0) @map("sort_order")
 
   group DebtNoteGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
 

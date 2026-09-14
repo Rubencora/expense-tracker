@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 const createItemSchema = z.object({
   label: z.string().min(1).max(120),
   amount: z.number().finite().optional().default(0),
+  isNegative: z.boolean().optional().default(false),
 });
 
 /** POST /api/debts/notes/:groupId/items → add an item at the end of the group */
@@ -29,7 +30,7 @@ export const POST = authMiddleware(async (req, { params, userId }) => {
       select: { sortOrder: true },
     });
     const item = await prisma.debtNoteItem.create({
-      data: { groupId, label: parsed.data.label, amount: parsed.data.amount, sortOrder: (last?.sortOrder ?? -1) + 1 },
+      data: { groupId, label: parsed.data.label, amount: parsed.data.amount, isNegative: parsed.data.isNegative, sortOrder: (last?.sortOrder ?? -1) + 1 },
     });
     return NextResponse.json(item, { status: 201 });
   } catch (error) {

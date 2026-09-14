@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 const itemSchema = z.object({
   label: z.string().min(1).max(120),
   amount: z.number().finite().optional().default(0),
+  isNegative: z.boolean().optional().default(false),
 });
 
 const createGroupSchema = z.object({
@@ -33,7 +34,7 @@ export const GET = authMiddleware(async (req, { userId }) => {
   });
 
   return NextResponse.json({
-    groups: groups.map((g) => ({ ...g, total: g.items.reduce((s, i) => s + i.amount, 0) })),
+    groups: groups.map((g) => ({ ...g, total: g.items.reduce((s, i) => s + (i.isNegative ? -i.amount : i.amount), 0) })),
   });
 });
 
@@ -64,14 +65,14 @@ export const POST = authMiddleware(async (req, { userId }) => {
         title,
         sortOrder: (last?.sortOrder ?? -1) + 1,
         items: items?.length
-          ? { create: items.map((it, idx) => ({ label: it.label, amount: it.amount, sortOrder: idx })) }
+          ? { create: items.map((it, idx) => ({ label: it.label, amount: it.amount, isNegative: it.isNegative, sortOrder: idx })) }
           : undefined,
       },
       include: groupInclude,
     });
 
     return NextResponse.json(
-      { ...group, total: group.items.reduce((s, i) => s + i.amount, 0) },
+      { ...group, total: group.items.reduce((s, i) => s + (i.isNegative ? -i.amount : i.amount), 0) },
       { status: 201 }
     );
   } catch (error) {

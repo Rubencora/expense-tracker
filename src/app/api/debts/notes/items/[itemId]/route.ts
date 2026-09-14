@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 const updateItemSchema = z.object({
   label: z.string().min(1).max(120).optional(),
   amount: z.number().finite().optional(),
+  isNegative: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 });
 
