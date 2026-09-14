@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiClient, getUser } from "@/lib/api-client";
 import { emitDataChanged } from "@/lib/data-events";
@@ -25,8 +25,13 @@ import {
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Plus, Trash2, Download, Upload, Loader2, Split, Pencil, AlertCircle } from "lucide-react";
+import { Plus, Trash2, Download, Upload, Loader2, Split, Pencil, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import PendingAmountsQueue from "@/components/expenses/PendingAmountsQueue";
+import MonthlyExpensesChart, {
+  monthKey,
+  monthTitle,
+  type MonthlyPoint,
+} from "@/components/expenses/MonthlyExpensesChart";
 import * as XLSX from "xlsx";
 
 interface Category {
@@ -67,6 +72,44 @@ interface SpaceMember {
   userId: string;
   name: string;
   role: string;
+}
+
+interface MonthlyResponse {
+  months: MonthlyPoint[];
+  copRate: number;
+  earliest: { year: number; month: number } | null;
+}
+
+type PeriodKey = "today" | "week" | "month" | "range" | "all";
+
+const PERIOD_CHIPS: { value: PeriodKey; label: string }[] = [
+  { value: "today", label: "Hoy" },
+  { value: "week", label: "Semana" },
+  { value: "month", label: "Mes" },
+  { value: "range", label: "Rango" },
+  { value: "all", label: "Todo" },
+];
+
+/** Comparable index so month cursors can be compared without Date juggling. */
+const monthIndex = (year: number, month: number): number => year * 12 + month;
+
+const startOfDay = (value: string): Date | null => {
+  if (!value) return null;
+  const d = new Date(`${value}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * Turns the two <input type="date"> values into an inclusive window.
+ * "Hasta" defaults to today, and an inverted range is swapped silently.
+ */
+function resolveRange(from: string, to: string): { from: Date | null; to: Date | null } {
+  let start = startOfDay(from);
+  if (!start) return { from: null, to: null };
+  let end = startOfDay(to) ?? new Date();
+  if (start > end) [start, end] = [end, start];
+  end.setHours(23, 59, 59, 999);
+  return { from: start, to: end };
 }
 
 type SplitTypeOption = "equal" | "percentage" | "exact" | "solo";
@@ -163,7 +206,17 @@ export default function GastosPage() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedSpace, setSelectedSpace] = useState("all");
-  const [period, setPeriod] = useState("month");
+  const [period, setPeriod] = useState<PeriodKey>("month");
+  const [monthCursor, setMonthCursor] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  });
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [monthly, setMonthly] = useState<MonthlyPoint[]>([]);
+  const [copRate, setCopRate] = useState(0);
+  const [earliestMonth, setEarliestMonth] = useState<{ year: number; month: number } | null>(null);
+  const [monthlyLoading, setMonthlyLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTag, setSelectedTag] = useState("all");
@@ -228,10 +281,16 @@ export default function GastosPage() {
         weekAgo.setDate(weekAgo.getDate() - 7);
         params.set("dateFrom", weekAgo.toISOString());
       } else if (period === "month") {
-        params.set("dateFrom", new Date(now.getFullYear(), now.getMonth(), 1).toISOString());
+        params.set("dateFrom", new Date(monthCursor.year, monthCursor.month - 1, 1).toISOString());
+        // Last millisecond of the month: the API filters with `lte`.
+        params.set("dateTo", new Date(monthCursor.year, monthCursor.month, 0, 23, 59, 59, 999).toISOString());
+      } else if (period === "range") {
+        const range = resolveRange(rangeFrom, rangeTo);
+        if (range.from) params.set("dateFrom", range.from.toISOString());
+        if (range.to) params.set("dateTo", range.to.toISOString());
       }
 
-      params.set("limit", "100");
+      params.set("limit", "200");
 
       const result = await apiClient<{ expenses: Expense[] }>(
         `/api/expenses?${params.toString()}`
@@ -259,7 +318,34 @@ export default function GastosPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, selectedSpace, search, period]);
+  }, [selectedCategory, selectedSpace, search, period, monthCursor, rangeFrom, rangeTo]);
+
+  // Last-12-months overview. Independent of the date filter, but scoped to
+  // the same space/category so the chart matches what is selected.
+  useEffect(() => {
+    let cancelled = false;
+    const loadMonthly = async () => {
+      setMonthlyLoading(true);
+      try {
+        const params = new URLSearchParams({ months: "12" });
+        if (selectedSpace !== "all") params.set("spaceId", selectedSpace);
+        if (selectedCategory !== "all") params.set("categoryId", selectedCategory);
+        const res = await apiClient<MonthlyResponse>(`/api/expenses/monthly?${params.toString()}`);
+        if (cancelled) return;
+        setMonthly(res.months);
+        setCopRate(res.copRate);
+        setEarliestMonth(res.earliest);
+      } catch (err) {
+        if (!cancelled) console.error("Error fetching monthly totals:", err);
+      } finally {
+        if (!cancelled) setMonthlyLoading(false);
+      }
+    };
+    void loadMonthly();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSpace, selectedCategory]);
 
   useEffect(() => {
     apiClient<Category[]>("/api/categories").then(setCategories);
@@ -581,6 +667,42 @@ export default function GastosPage() {
   const memberCount = spaceMembers.length;
   const equalShare = memberCount > 0 ? parsedAmount / memberCount : 0;
 
+  // Date filter derived state
+  const currentMonth = useMemo(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  }, []);
+  const cursorIndex = monthIndex(monthCursor.year, monthCursor.month);
+  const atCurrentMonth = cursorIndex >= monthIndex(currentMonth.year, currentMonth.month);
+  const atEarliestMonth = earliestMonth
+    ? cursorIndex <= monthIndex(earliestMonth.year, earliestMonth.month)
+    : false;
+  const monthLabel = monthTitle(monthCursor.year, monthCursor.month);
+  const rangeInverted = Boolean(rangeFrom && rangeTo && rangeFrom > rangeTo);
+
+  const shiftMonth = (delta: number) => {
+    setMonthCursor((prev) => {
+      const d = new Date(prev.year, prev.month - 1 + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() + 1 };
+    });
+  };
+
+  const handleSelectMonth = useCallback((year: number, month: number) => {
+    setPeriod("month");
+    setMonthCursor({ year, month });
+  }, []);
+
+  const countLabel =
+    period === "month"
+      ? `gastos en ${monthLabel}`
+      : period === "today"
+        ? "gastos hoy"
+        : period === "week"
+          ? "gastos en los últimos 7 días"
+          : period === "range"
+            ? "gastos en el rango"
+            : "gastos registrados";
+
   return (
     <div className="space-y-6 animate-fade-in">
       {pendingCount > 0 && (
@@ -617,7 +739,7 @@ export default function GastosPage() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary tracking-tight">Gastos</h1>
           <p className="text-sm text-text-muted mt-1">
-            {expenses.length} gastos registrados
+            {expenses.length} {countLabel}
           </p>
         </div>
         <div className="flex gap-2">
@@ -924,18 +1046,6 @@ export default function GastosPage() {
           </SelectContent>
         </Select>
 
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-36 bg-surface-raised border-border-subtle">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-surface-overlay border-border-subtle">
-            <SelectItem value="today">Hoy</SelectItem>
-            <SelectItem value="week">Esta semana</SelectItem>
-            <SelectItem value="month">Este mes</SelectItem>
-            <SelectItem value="all">Todo</SelectItem>
-          </SelectContent>
-        </Select>
-
         <Select value={selectedTag} onValueChange={setSelectedTag}>
           <SelectTrigger className="w-36 bg-surface-raised border-border-subtle">
             <SelectValue placeholder="Etiqueta" />
@@ -946,6 +1056,91 @@ export default function GastosPage() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Date filter: quick chips + explicit month navigator / custom range */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-1 rounded-xl border border-border-subtle bg-surface-raised p-1">
+            {PERIOD_CHIPS.map((chip) => (
+              <button
+                key={chip.value}
+                type="button"
+                onClick={() => setPeriod(chip.value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                  period === chip.value
+                    ? "bg-brand/10 text-brand"
+                    : "text-text-muted hover:text-text-secondary"
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+
+          {period === "month" && (
+            <div className="flex items-center gap-1 rounded-xl border border-border-subtle bg-surface-raised p-1">
+              <button
+                type="button"
+                onClick={() => shiftMonth(-1)}
+                disabled={atEarliestMonth}
+                aria-label="Mes anterior"
+                className="rounded-lg p-1.5 text-text-muted transition-colors hover:text-brand disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-text-muted"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="min-w-[8.5rem] text-center text-sm font-medium text-text-primary">
+                {monthLabel}
+              </span>
+              <button
+                type="button"
+                onClick={() => shiftMonth(1)}
+                disabled={atCurrentMonth}
+                aria-label="Mes siguiente"
+                className="rounded-lg p-1.5 text-text-muted transition-colors hover:text-brand disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-text-muted"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {period === "range" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-text-muted">
+                Desde
+                <input
+                  type="date"
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(e.target.value)}
+                  className="h-9 rounded-xl border border-border-subtle bg-surface-raised px-2 font-numbers text-xs text-text-primary outline-none [color-scheme:dark] focus:border-brand/40"
+                />
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-text-muted">
+                Hasta
+                <input
+                  type="date"
+                  value={rangeTo}
+                  onChange={(e) => setRangeTo(e.target.value)}
+                  className="h-9 rounded-xl border border-border-subtle bg-surface-raised px-2 font-numbers text-xs text-text-primary outline-none [color-scheme:dark] focus:border-brand/40"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
+        {period === "range" && rangeInverted && (
+          <p className="text-[11px] text-amber-accent">
+            Las fechas estaban invertidas: se aplicaron en el orden correcto.
+          </p>
+        )}
+      </div>
+
+      <MonthlyExpensesChart
+        data={monthly}
+        copRate={copRate}
+        loading={monthlyLoading}
+        activeKey={period === "month" ? monthKey(monthCursor.year, monthCursor.month) : null}
+        onSelectMonth={handleSelectMonth}
+      />
 
       {/* Expenses List */}
       {loading ? (
