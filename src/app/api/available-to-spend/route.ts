@@ -24,14 +24,14 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const outstandingDebtUsd = debtSummary?.totalDebtUsd ?? 0;
 
   // 2. Get total expenses for the current month
-  const expensesAgg = await prisma.expense.aggregate({
+  const monthExpensesList = await prisma.expense.findMany({
     where: {
       userId,
       createdAt: { gte: monthStart, lt: monthEnd },
     },
-    _sum: { amountUsd: true },
+    select: { amount: true, currency: true, amountUsd: true },
   });
-  const monthlyExpenses = expensesAgg._sum.amountUsd || 0;
+  const monthlyExpenses = monthExpensesList.reduce((sum, e) => sum + e.amountUsd, 0);
 
   // 3. Get total savings goal contributions for the current month
   const contributions = await prisma.savingsContribution.findMany({
@@ -72,9 +72,14 @@ export const GET = authMiddleware(async (req, { userId }) => {
   // 6. COP-consistent version. Sueldo/Deuda vienen en COP anclados a la TRM
   // del mes en Deudas; convertir availableToSpend (USD) a COP con la tasa de
   // mercado del dia desalinearia el numero de "Sueldo - Deuda - Gasto -
-  // Ahorro" en COP. Gastos y ahorros se convierten con esa misma TRM.
+  // Ahorro" en COP. Los gastos se suman en su monto COP real (la mayoria se
+  // registran nativamente en COP); los ahorros solo tienen amountUsd, asi
+  // que usan la TRM de Deudas como mejor aproximacion.
   const trm = debtSummary?.trm ?? 0;
-  const monthlyExpensesCop = trm > 0 ? monthlyExpenses * trm : 0;
+  const monthlyExpensesCop = monthExpensesList.reduce(
+    (sum, e) => sum + (e.currency === "COP" ? e.amount : trm > 0 ? e.amountUsd * trm : 0),
+    0
+  );
   const monthlySavingsCop = trm > 0 ? monthlySavings * trm : 0;
   const availableToSpendCop = debtSummary
     ? debtSummary.incomeCop - debtSummary.totalDebtCop - monthlyExpensesCop - monthlySavingsCop

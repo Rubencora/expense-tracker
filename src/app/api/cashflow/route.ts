@@ -22,14 +22,14 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-  const currentMonthExpenses = await prisma.expense.aggregate({
+  const currentMonthExpensesList = await prisma.expense.findMany({
     where: {
       userId,
       createdAt: { gte: monthStart, lt: monthEnd },
     },
-    _sum: { amountUsd: true },
+    select: { amount: true, currency: true, amountUsd: true },
   });
-  const monthlyExpenses = currentMonthExpenses._sum.amountUsd || 0;
+  const monthlyExpenses = currentMonthExpensesList.reduce((sum, e) => sum + e.amountUsd, 0);
 
   // --- Last month expenses ---
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -64,10 +64,15 @@ export const GET = authMiddleware(async (req, { userId }) => {
   // Sueldo/Deuda ya vienen en COP anclados a la TRM de ese mes en Deudas.
   // Convertir el balance en USD a COP con la tasa de mercado del dia (que
   // puede diferir mucho de esa TRM) produciria un numero que no cuadra con
-  // "Sueldo - Deuda - Gasto" en COP. En vez de eso, los gastos se convierten
-  // a COP con la misma TRM del mes, para que el balance en COP sea exacto.
+  // "Sueldo - Deuda - Gasto" en COP. Los gastos se suman en su monto COP
+  // real (la mayoria se registran nativamente en COP, sin conversion) en
+  // vez de reconstruirlos desde amountUsd con cualquier tasa; solo los
+  // gastos en USD usan la TRM de Deudas como mejor aproximacion.
   const trm = debtSummary?.trm ?? 0;
-  const monthlyExpensesCop = trm > 0 ? monthlyExpenses * trm : 0;
+  const monthlyExpensesCop = currentMonthExpensesList.reduce(
+    (sum, e) => sum + (e.currency === "COP" ? e.amount : trm > 0 ? e.amountUsd * trm : 0),
+    0
+  );
   const balanceCop = debtSummary ? debtSummary.incomeCop - debtSummary.totalDebtCop - monthlyExpensesCop : 0;
   const dailyAvailableCop = remaining > 0 ? balanceCop / remaining : 0;
 
