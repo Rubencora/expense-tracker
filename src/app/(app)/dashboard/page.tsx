@@ -64,9 +64,11 @@ interface CashFlowData {
   monthlyIncome: number;
   monthlyExpenses: number;
   balance: number;
+  balanceCop: number;
   savingsRate: number;
   expenseRatio: number;
   dailyAvailable: number;
+  dailyAvailableCop: number;
   lastMonthExpenses: number;
   lastMonthRatio: number;
   monthlyHistory: { month: string; income: number; expenses: number; balance: number }[];
@@ -79,8 +81,10 @@ interface AvailableToSpendData {
   monthlySavings: number;
   totalSavingsCommitted: number;
   availableToSpend: number;
+  availableToSpendCop: number;
   daysRemaining: number;
   dailyBudget: number;
+  dailyBudgetCop: number;
   outstandingDebt: { usd: number; cop: number; incomeUsd: number; incomeCop: number; year: number; month: number } | null;
   activeGoals: {
     id: string;
@@ -459,6 +463,11 @@ export default function DashboardPage() {
     fmtAmount(cur === "COP" ? debt.cop : debt.usd);
   const fmtDebtIncome = (debt: { incomeUsd: number; incomeCop: number }) =>
     fmtAmount(cur === "COP" ? debt.incomeCop : debt.incomeUsd);
+  // Same idea for numbers derived from Sueldo/Deuda (Balance, Disponible):
+  // the API already returns a COP-consistent figure (Sueldo COP - Deuda COP
+  // - Gasto COP, all at the Deudas TRM) alongside the USD one — pick the
+  // matching field instead of reconverting the USD figure at the live rate.
+  const fmtAnchored = (usd: number, cop: number) => fmtAmount(cur === "COP" ? cop : usd);
 
   if (loading) return <DashboardSkeleton />;
 
@@ -536,7 +545,7 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Balance</span>
               </div>
               <p className={`text-2xl font-bold font-numbers ${cashFlow.balance >= 0 ? "text-brand" : "text-red-accent"}`}>
-                {fmtUsd(cashFlow.balance)}
+                {fmtAnchored(cashFlow.balance, cashFlow.balanceCop)}
                 <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">
@@ -572,7 +581,7 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Disponible/dia</span>
               </div>
               <p className={`text-2xl font-bold font-numbers ${cashFlow.dailyAvailable >= 0 ? "text-text-primary" : "text-red-accent"}`}>
-                {fmtUsd(cashFlow.dailyAvailable)}
+                {fmtAnchored(cashFlow.dailyAvailable, cashFlow.dailyAvailableCop)}
                 <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">Resto del mes</p>
@@ -680,11 +689,11 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Disponible</span>
               </div>
               <p className={`text-2xl font-bold font-numbers ${availableData.availableToSpend >= 0 ? "text-brand" : "text-red-accent"}`}>
-                {fmtUsd(availableData.availableToSpend)}
+                {fmtAnchored(availableData.availableToSpend, availableData.availableToSpendCop)}
                 <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">
-                {fmtUsd(availableData.dailyBudget)}/dia · {availableData.daysRemaining}d restantes
+                {fmtAnchored(availableData.dailyBudget, availableData.dailyBudgetCop)}/dia · {availableData.daysRemaining}d restantes
               </p>
               {availableData.outstandingDebt && (
                 <div className="mt-1 space-y-0.5">

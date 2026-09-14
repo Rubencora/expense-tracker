@@ -60,6 +60,17 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const dailyAvailable = remaining > 0 ? balance / remaining : 0;
   const lastMonthRatio = monthlyIncome > 0 ? lastMonthExpenses / monthlyIncome : 0;
 
+  // --- COP-consistent balance ---
+  // Sueldo/Deuda ya vienen en COP anclados a la TRM de ese mes en Deudas.
+  // Convertir el balance en USD a COP con la tasa de mercado del dia (que
+  // puede diferir mucho de esa TRM) produciria un numero que no cuadra con
+  // "Sueldo - Deuda - Gasto" en COP. En vez de eso, los gastos se convierten
+  // a COP con la misma TRM del mes, para que el balance en COP sea exacto.
+  const trm = debtSummary?.trm ?? 0;
+  const monthlyExpensesCop = trm > 0 ? monthlyExpenses * trm : 0;
+  const balanceCop = debtSummary ? debtSummary.incomeCop - debtSummary.totalDebtCop - monthlyExpensesCop : 0;
+  const dailyAvailableCop = remaining > 0 ? balanceCop / remaining : 0;
+
   // --- Monthly history (last 6 months) ---
   // Nota: el Sueldo/Deuda de Deudas solo se conoce para el mes mas reciente;
   // los meses pasados de este grafico siguen usando ese mismo ingreso como
@@ -94,9 +105,11 @@ export const GET = authMiddleware(async (req, { userId }) => {
     monthlyIncome: round2(monthlyIncome),
     monthlyExpenses: round2(monthlyExpenses),
     balance: round2(balance),
+    balanceCop: Math.round(balanceCop),
     savingsRate: round2(savingsRate),
     expenseRatio: round2(expenseRatio),
     dailyAvailable: round2(dailyAvailable),
+    dailyAvailableCop: Math.round(dailyAvailableCop),
     lastMonthExpenses: round2(lastMonthExpenses),
     lastMonthRatio: round2(lastMonthRatio),
     monthlyHistory,

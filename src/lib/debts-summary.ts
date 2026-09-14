@@ -8,6 +8,8 @@ export interface OutstandingDebtSummary {
   /** Sueldo + Ingresos extra of that same month, as entered in Deudas. */
   incomeCop: number;
   incomeUsd: number;
+  /** TRM used by Deudas for this month (the anchor rate behind totalDebtCop/incomeCop). */
+  trm: number;
   year: number;
   month: number;
 }
@@ -81,6 +83,7 @@ export async function getLatestDebtSummary(userId: string): Promise<OutstandingD
     totalDebtUsd: summary.trm > 0 ? summary.totalDebt / summary.trm : 0,
     incomeCop: summary.income,
     incomeUsd: summary.trm > 0 ? summary.income / summary.trm : 0,
+    trm: summary.trm,
     year,
     month,
   };

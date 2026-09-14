@@ -69,15 +69,29 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const daysRemaining = daysRemainingInMonth(now);
   const dailyBudget = availableToSpend > 0 ? availableToSpend / daysRemaining : 0;
 
-  // 6. Return all values
+  // 6. COP-consistent version. Sueldo/Deuda vienen en COP anclados a la TRM
+  // del mes en Deudas; convertir availableToSpend (USD) a COP con la tasa de
+  // mercado del dia desalinearia el numero de "Sueldo - Deuda - Gasto -
+  // Ahorro" en COP. Gastos y ahorros se convierten con esa misma TRM.
+  const trm = debtSummary?.trm ?? 0;
+  const monthlyExpensesCop = trm > 0 ? monthlyExpenses * trm : 0;
+  const monthlySavingsCop = trm > 0 ? monthlySavings * trm : 0;
+  const availableToSpendCop = debtSummary
+    ? debtSummary.incomeCop - debtSummary.totalDebtCop - monthlyExpensesCop - monthlySavingsCop
+    : 0;
+  const dailyBudgetCop = availableToSpendCop > 0 ? availableToSpendCop / daysRemaining : 0;
+
+  // 7. Return all values
   return NextResponse.json({
     monthlyIncome: round2(monthlyIncome),
     monthlyExpenses: round2(monthlyExpenses),
     monthlySavings: round2(monthlySavings),
     totalSavingsCommitted: round2(totalSavingsCommitted),
     availableToSpend: round2(availableToSpend),
+    availableToSpendCop: Math.round(availableToSpendCop),
     daysRemaining,
     dailyBudget: round2(dailyBudget),
+    dailyBudgetCop: Math.round(dailyBudgetCop),
     activeGoals,
     outstandingDebt: debtSummary
       ? {
