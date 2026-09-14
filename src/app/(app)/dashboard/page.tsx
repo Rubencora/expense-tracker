@@ -451,6 +451,12 @@ export default function DashboardPage() {
   const fmtAmount = (v: number) =>
     cur === "COP" ? `$${v.toLocaleString("es-CO")}` : `$${v.toFixed(2)}`;
   const fmtUsd = (usd: number) => fmtAmount(toCur(usd));
+  // outstandingDebt already carries both its exact COP and USD figures (computed
+  // with the Deudas module's own TRM) — show the matching one directly instead of
+  // reconverting through the dashboard's live market rate, which would drift from
+  // the TRM and no longer match what /deudas shows.
+  const fmtDebt = (debt: { usd: number; cop: number }) =>
+    fmtAmount(cur === "COP" ? debt.cop : debt.usd);
 
   if (loading) return <DashboardSkeleton />;
 
@@ -539,7 +545,7 @@ export default function DashboardPage() {
                   href="/deudas"
                   className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
                 >
-                  Incluye deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtUsd(cashFlow.outstandingDebt.usd)} {cur}
+                  Incluye deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtDebt(cashFlow.outstandingDebt)} {cur}
                 </Link>
               )}
             </div>
@@ -561,7 +567,7 @@ export default function DashboardPage() {
                   href="/deudas"
                   className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
                 >
-                  Incluye deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtUsd(cashFlow.outstandingDebt.usd)} {cur}
+                  Incluye deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtDebt(cashFlow.outstandingDebt)} {cur}
                 </Link>
               )}
             </div>
@@ -657,7 +663,7 @@ export default function DashboardPage() {
                   href="/deudas"
                   className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
                 >
-                  Incluye deuda {shortMonthLabel(availableData.outstandingDebt.year, availableData.outstandingDebt.month)}: -{fmtUsd(availableData.outstandingDebt.usd)} {cur}
+                  Incluye deuda {shortMonthLabel(availableData.outstandingDebt.year, availableData.outstandingDebt.month)}: -{fmtDebt(availableData.outstandingDebt)} {cur}
                 </Link>
               )}
             </div>
