@@ -1,28 +1,10 @@
 import { NextResponse } from "next/server";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { IncomeFrequency } from "@/generated/prisma/client";
 import { getLatestDebtSummary } from "@/lib/debts-summary";
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-function monthlyAmount(amountUsd: number, frequency: IncomeFrequency): number {
-  switch (frequency) {
-    case "MONTHLY":
-      return amountUsd;
-    case "WEEKLY":
-      return (amountUsd * 52) / 12;
-    case "BIWEEKLY":
-      return (amountUsd * 26) / 12;
-    case "YEARLY":
-      return amountUsd / 12;
-    case "ONCE":
-      return 0;
-    default:
-      return 0;
-  }
 }
 
 function daysRemainingInMonth(now: Date): number {
@@ -35,15 +17,11 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-  // 1. Get all active incomes and calculate total monthly income in USD
-  const incomes = await prisma.income.findMany({
-    where: { userId, isActive: true },
-  });
-
-  const monthlyIncome = incomes.reduce(
-    (sum, inc) => sum + monthlyAmount(inc.amountUsd, inc.frequency as IncomeFrequency),
-    0
-  );
+  // 1. Ingresos y deuda (modulo Deudas): Sueldo/Ingresos extra y DEUDA TOTAL
+  // del mes mas reciente con datos en Deudas, en vez del modulo Ingresos.
+  const debtSummary = await getLatestDebtSummary(userId);
+  const monthlyIncome = debtSummary?.incomeUsd ?? 0;
+  const outstandingDebtUsd = debtSummary?.totalDebtUsd ?? 0;
 
   // 2. Get total expenses for the current month
   const expensesAgg = await prisma.expense.aggregate({
@@ -86,12 +64,7 @@ export const GET = authMiddleware(async (req, { userId }) => {
     0
   );
 
-  // Outstanding debt from the Deudas module (latest month with real data),
-  // so "disponible" reflects what is actually owed, not just this month's cash flow.
-  const debtSummary = await getLatestDebtSummary(userId);
-  const outstandingDebtUsd = debtSummary?.totalDebtUsd ?? 0;
-
-  const availableToSpend = monthlyIncome - monthlyExpenses - monthlySavings - outstandingDebtUsd;
+  const availableToSpend = monthlyIncome - outstandingDebtUsd - monthlyExpenses - monthlySavings;
 
   const daysRemaining = daysRemainingInMonth(now);
   const dailyBudget = availableToSpend > 0 ? availableToSpend / daysRemaining : 0;
@@ -110,6 +83,8 @@ export const GET = authMiddleware(async (req, { userId }) => {
       ? {
           usd: round2(debtSummary.totalDebtUsd),
           cop: Math.round(debtSummary.totalDebtCop),
+          incomeUsd: round2(debtSummary.incomeUsd),
+          incomeCop: Math.round(debtSummary.incomeCop),
           year: debtSummary.year,
           month: debtSummary.month,
         }

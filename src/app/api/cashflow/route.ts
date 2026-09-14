@@ -1,28 +1,10 @@
 import { NextResponse } from "next/server";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { IncomeFrequency } from "@/generated/prisma/client";
 import { getLatestDebtSummary } from "@/lib/debts-summary";
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-function monthlyAmount(amountUsd: number, frequency: IncomeFrequency): number {
-  switch (frequency) {
-    case "MONTHLY":
-      return amountUsd;
-    case "WEEKLY":
-      return (amountUsd * 52) / 12;
-    case "BIWEEKLY":
-      return (amountUsd * 26) / 12;
-    case "YEARLY":
-      return amountUsd / 12;
-    case "ONCE":
-      return 0;
-    default:
-      return 0;
-  }
 }
 
 function daysRemainingInMonth(now: Date): number {
@@ -35,16 +17,6 @@ export const GET = authMiddleware(async (req, { userId }) => {
   const period = searchParams.get("period") || "month";
 
   const now = new Date();
-
-  // --- Active incomes ---
-  const incomes = await prisma.income.findMany({
-    where: { userId, isActive: true },
-  });
-
-  const monthlyIncome = incomes.reduce(
-    (sum, inc) => sum + monthlyAmount(inc.amountUsd, inc.frequency as IncomeFrequency),
-    0
-  );
 
   // --- Current month expenses ---
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -72,22 +44,26 @@ export const GET = authMiddleware(async (req, { userId }) => {
   });
   const lastMonthExpenses = lastMonthAgg._sum.amountUsd || 0;
 
-  // --- Outstanding debt (Deudas module) ---
-  // Folded into the balance so it reflects what the user actually owes, not
-  // just income vs. expenses. Uses the latest month in Deudas that has real
-  // data (e.g. August's total while September is still empty).
+  // --- Ingresos + deuda (modulo Deudas) ---
+  // El balance parte de la deuda: usa el Sueldo/Ingresos extra y la DEUDA TOTAL
+  // del mes mas reciente con datos en Deudas (no del modulo Ingresos por
+  // separado), y les resta los gastos registrados en Gastos.
   const debtSummary = await getLatestDebtSummary(userId);
+  const monthlyIncome = debtSummary?.incomeUsd ?? 0;
   const outstandingDebtUsd = debtSummary?.totalDebtUsd ?? 0;
 
   // --- Derived metrics ---
-  const balance = monthlyIncome - monthlyExpenses - outstandingDebtUsd;
-  const savingsRate = balance > 0 ? (balance / monthlyIncome) * 100 : 0;
+  const balance = monthlyIncome - outstandingDebtUsd - monthlyExpenses;
+  const savingsRate = balance > 0 && monthlyIncome > 0 ? (balance / monthlyIncome) * 100 : 0;
   const expenseRatio = monthlyIncome > 0 ? monthlyExpenses / monthlyIncome : 0;
   const remaining = daysRemainingInMonth(now);
   const dailyAvailable = remaining > 0 ? balance / remaining : 0;
   const lastMonthRatio = monthlyIncome > 0 ? lastMonthExpenses / monthlyIncome : 0;
 
   // --- Monthly history (last 6 months) ---
+  // Nota: el Sueldo/Deuda de Deudas solo se conoce para el mes mas reciente;
+  // los meses pasados de este grafico siguen usando ese mismo ingreso como
+  // referencia (no el ingreso historico real de cada mes).
   const monthlyHistory: { month: string; income: number; expenses: number; balance: number }[] = [];
 
   for (let i = 5; i >= 0; i--) {
@@ -128,6 +104,8 @@ export const GET = authMiddleware(async (req, { userId }) => {
       ? {
           usd: round2(debtSummary.totalDebtUsd),
           cop: Math.round(debtSummary.totalDebtCop),
+          incomeUsd: round2(debtSummary.incomeUsd),
+          incomeCop: Math.round(debtSummary.incomeCop),
           year: debtSummary.year,
           month: debtSummary.month,
         }

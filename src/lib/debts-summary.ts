@@ -5,6 +5,9 @@ import { buildBalanceGrid, type DebtKind } from "@/lib/debts";
 export interface OutstandingDebtSummary {
   totalDebtCop: number;
   totalDebtUsd: number;
+  /** Sueldo + Ingresos extra of that same month, as entered in Deudas. */
+  incomeCop: number;
+  incomeUsd: number;
   year: number;
   month: number;
 }
@@ -12,9 +15,10 @@ export interface OutstandingDebtSummary {
 /**
  * Finds the most recent month, no later than the current one, that actually
  * has debt data (saldos/pagos, or sueldo/TRM) in the Deudas module, and
- * returns that month's DEUDA TOTAL. Used to fold outstanding debt into the
- * dashboard's balance figures — e.g. if September has no entries yet but
- * August does, August's total is used until September gets filled in.
+ * returns that month's DEUDA TOTAL and Sueldo+Ingresos extra. Used as the
+ * single source of truth for the dashboard's balance figures — e.g. if
+ * September has no entries yet but August does, August's totals are used
+ * until September gets filled in.
  */
 export async function getLatestDebtSummary(userId: string): Promise<OutstandingDebtSummary | null> {
   const now = new Date();
@@ -75,6 +79,8 @@ export async function getLatestDebtSummary(userId: string): Promise<OutstandingD
   return {
     totalDebtCop: summary.totalDebt,
     totalDebtUsd: summary.trm > 0 ? summary.totalDebt / summary.trm : 0,
+    incomeCop: summary.income,
+    incomeUsd: summary.trm > 0 ? summary.income / summary.trm : 0,
     year,
     month,
   };

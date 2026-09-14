@@ -70,7 +70,7 @@ interface CashFlowData {
   lastMonthExpenses: number;
   lastMonthRatio: number;
   monthlyHistory: { month: string; income: number; expenses: number; balance: number }[];
-  outstandingDebt: { usd: number; cop: number; year: number; month: number } | null;
+  outstandingDebt: { usd: number; cop: number; incomeUsd: number; incomeCop: number; year: number; month: number } | null;
 }
 
 interface AvailableToSpendData {
@@ -81,7 +81,7 @@ interface AvailableToSpendData {
   availableToSpend: number;
   daysRemaining: number;
   dailyBudget: number;
-  outstandingDebt: { usd: number; cop: number; year: number; month: number } | null;
+  outstandingDebt: { usd: number; cop: number; incomeUsd: number; incomeCop: number; year: number; month: number } | null;
   activeGoals: {
     id: string;
     name: string;
@@ -457,6 +457,8 @@ export default function DashboardPage() {
   // the TRM and no longer match what /deudas shows.
   const fmtDebt = (debt: { usd: number; cop: number }) =>
     fmtAmount(cur === "COP" ? debt.cop : debt.usd);
+  const fmtDebtIncome = (debt: { incomeUsd: number; incomeCop: number }) =>
+    fmtAmount(cur === "COP" ? debt.incomeCop : debt.incomeUsd);
 
   if (loading) return <DashboardSkeleton />;
 
@@ -540,13 +542,25 @@ export default function DashboardPage() {
               <p className="text-xs text-text-muted mt-1">
                 {cashFlow.savingsRate > 0 ? `${cashFlow.savingsRate.toFixed(0)}% ahorro` : "Sin ahorro"}
               </p>
-              {cashFlow.outstandingDebt && cashFlow.outstandingDebt.usd > 0 && (
-                <Link
-                  href="/deudas"
-                  className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
-                >
-                  Incluye deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtDebt(cashFlow.outstandingDebt)} {cur}
-                </Link>
+              {cashFlow.outstandingDebt && (
+                <div className="mt-1 space-y-0.5">
+                  {cashFlow.outstandingDebt.incomeUsd > 0 && (
+                    <Link
+                      href="/deudas"
+                      className="block text-[11px] text-brand/80 hover:text-brand transition-colors"
+                    >
+                      Sueldo {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: {fmtDebtIncome(cashFlow.outstandingDebt)} {cur}
+                    </Link>
+                  )}
+                  {cashFlow.outstandingDebt.usd > 0 && (
+                    <Link
+                      href="/deudas"
+                      className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors"
+                    >
+                      Deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtDebt(cashFlow.outstandingDebt)} {cur}
+                    </Link>
+                  )}
+                </div>
               )}
             </div>
 
@@ -562,13 +576,25 @@ export default function DashboardPage() {
                 <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">Resto del mes</p>
-              {cashFlow.outstandingDebt && cashFlow.outstandingDebt.usd > 0 && (
-                <Link
-                  href="/deudas"
-                  className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
-                >
-                  Incluye deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtDebt(cashFlow.outstandingDebt)} {cur}
-                </Link>
+              {cashFlow.outstandingDebt && (
+                <div className="mt-1 space-y-0.5">
+                  {cashFlow.outstandingDebt.incomeUsd > 0 && (
+                    <Link
+                      href="/deudas"
+                      className="block text-[11px] text-brand/80 hover:text-brand transition-colors"
+                    >
+                      Sueldo {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: {fmtDebtIncome(cashFlow.outstandingDebt)} {cur}
+                    </Link>
+                  )}
+                  {cashFlow.outstandingDebt.usd > 0 && (
+                    <Link
+                      href="/deudas"
+                      className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors"
+                    >
+                      Deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtDebt(cashFlow.outstandingDebt)} {cur}
+                    </Link>
+                  )}
+                </div>
               )}
             </div>
 
@@ -580,7 +606,9 @@ export default function DashboardPage() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Ingresos</span>
               </div>
               <p className="text-2xl font-bold font-numbers text-text-primary">
-                {fmtUsd(cashFlow.monthlyIncome)}
+                {cashFlow.outstandingDebt
+                  ? fmtDebtIncome(cashFlow.outstandingDebt)
+                  : fmtUsd(cashFlow.monthlyIncome)}
                 <span className="text-xs font-normal text-text-muted ml-1.5">{cur}/mes</span>
               </p>
               <div className="mt-2 w-full bg-surface-overlay rounded-full h-1.5">
@@ -658,13 +686,25 @@ export default function DashboardPage() {
               <p className="text-xs text-text-muted mt-1">
                 {fmtUsd(availableData.dailyBudget)}/dia · {availableData.daysRemaining}d restantes
               </p>
-              {availableData.outstandingDebt && availableData.outstandingDebt.usd > 0 && (
-                <Link
-                  href="/deudas"
-                  className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
-                >
-                  Incluye deuda {shortMonthLabel(availableData.outstandingDebt.year, availableData.outstandingDebt.month)}: -{fmtDebt(availableData.outstandingDebt)} {cur}
-                </Link>
+              {availableData.outstandingDebt && (
+                <div className="mt-1 space-y-0.5">
+                  {availableData.outstandingDebt.incomeUsd > 0 && (
+                    <Link
+                      href="/deudas"
+                      className="block text-[11px] text-brand/80 hover:text-brand transition-colors"
+                    >
+                      Sueldo {shortMonthLabel(availableData.outstandingDebt.year, availableData.outstandingDebt.month)}: {fmtDebtIncome(availableData.outstandingDebt)} {cur}
+                    </Link>
+                  )}
+                  {availableData.outstandingDebt.usd > 0 && (
+                    <Link
+                      href="/deudas"
+                      className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors"
+                    >
+                      Deuda {shortMonthLabel(availableData.outstandingDebt.year, availableData.outstandingDebt.month)}: -{fmtDebt(availableData.outstandingDebt)} {cur}
+                    </Link>
+                  )}
+                </div>
               )}
             </div>
 
