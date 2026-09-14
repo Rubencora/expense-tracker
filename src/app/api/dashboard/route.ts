@@ -10,30 +10,49 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
   const period = searchParams.get("period") || "month";
   const categoryId = searchParams.get("categoryId");
   const displayCurrency = searchParams.get("currency") === "COP" ? "COP" : "USD";
+  // Explicit dateFrom/dateTo (e.g. from Gastos' month navigator or custom range)
+  // override the period-based shorthand, so this endpoint can power any
+  // arbitrarily selected window, not just today/week/month/all.
+  const dateFromParam = searchParams.get("dateFrom");
+  const dateToParam = searchParams.get("dateTo");
 
   // Calculate date range
   const now = new Date();
   let dateFrom: Date;
-  switch (period) {
-    case "today":
-      dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      break;
-    case "week":
-      dateFrom = new Date(now);
-      dateFrom.setDate(dateFrom.getDate() - 7);
-      break;
-    case "all":
-      dateFrom = new Date(0);
-      break;
-    case "month":
-    default:
-      dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
-      break;
+  let dateTo: Date | null = null;
+
+  if (dateFromParam) {
+    const parsed = new Date(dateFromParam);
+    dateFrom = Number.isNaN(parsed.getTime()) ? new Date(now.getFullYear(), now.getMonth(), 1) : parsed;
+    if (dateToParam) {
+      const parsedTo = new Date(dateToParam);
+      if (!Number.isNaN(parsedTo.getTime())) {
+        dateTo = parsedTo;
+      }
+    }
+  } else {
+    switch (period) {
+      case "today":
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case "week":
+        dateFrom = new Date(now);
+        dateFrom.setDate(dateFrom.getDate() - 7);
+        break;
+      case "all":
+        dateFrom = new Date(0);
+        break;
+      case "month":
+      default:
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+    }
   }
+  const isUnbounded = !dateFromParam && period === "all";
 
   // Build where clause
   const where: Record<string, unknown> = {
-    createdAt: { gte: dateFrom },
+    createdAt: dateTo ? { gte: dateFrom, lte: dateTo } : { gte: dateFrom },
   };
 
   if (spaceId && spaceId !== "personal" && spaceId !== "all") {
@@ -131,28 +150,59 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
       .sort((a, b) => b.total - a.total);
   }
 
-  // Daily trend - fill all days from dateFrom to now
+  // Daily trend - fill all days from dateFrom to the end of the window (or
+  // today, capped, so a bounded past range like a custom month doesn't
+  // spill the trend all the way to the present).
   const dailyMap = new Map<string, number>();
   for (const e of expenses) {
     const day = e.createdAt.toISOString().split("T")[0];
     dailyMap.set(day, (dailyMap.get(day) || 0) + e.amountUsd);
   }
   const dailyTrend: { date: string; total: number }[] = [];
-  if (period !== "all") {
-    const cursor = new Date(dateFrom);
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    while (cursor <= today) {
+  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const trendEndRaw = dateTo ?? todayDate;
+  const trendEnd = trendEndRaw > todayDate ? todayDate : trendEndRaw;
+  const spanDays = Math.round((trendEnd.getTime() - dateFrom.getTime()) / 86400000);
+  if (!isUnbounded && spanDays >= 0 && spanDays <= 366) {
+    const cursor = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), dateFrom.getDate());
+    const endDay = new Date(trendEnd.getFullYear(), trendEnd.getMonth(), trendEnd.getDate());
+    while (cursor <= endDay) {
       const key = cursor.toISOString().split("T")[0];
       dailyTrend.push({ date: key, total: Math.round((dailyMap.get(key) || 0) * 100) / 100 });
       cursor.setDate(cursor.getDate() + 1);
     }
   } else {
-    // "all" period: only show days with expenses
+    // Unbounded ("all") or a very long span: only show days with expenses.
     dailyTrend.push(
       ...Array.from(dailyMap.entries())
         .map(([date, total]) => ({ date, total: Math.round(total * 100) / 100 }))
         .sort((a, b) => a.date.localeCompare(b.date))
     );
+  }
+
+  // --- Previous-period comparison ("balance"/trend vs the prior equivalent
+  // window, e.g. this month vs last month, or this range vs the same-length
+  // range right before it). Skipped for the unbounded "all time" view.
+  let previousPeriod: { total: number; count: number; changePercent: number | null } | null = null;
+  if (!isUnbounded) {
+    const windowEnd = dateTo ?? now;
+    const spanMs = windowEnd.getTime() - dateFrom.getTime();
+    if (spanMs > 0) {
+      const prevTo = new Date(dateFrom.getTime() - 1);
+      const prevFrom = new Date(dateFrom.getTime() - spanMs);
+      const prevAgg = await prisma.expense.aggregate({
+        where: { ...where, createdAt: { gte: prevFrom, lte: prevTo } },
+        _sum: { amountUsd: true },
+        _count: true,
+      });
+      const prevTotalUsd = prevAgg._sum.amountUsd ?? 0;
+      const changePercent = prevTotalUsd > 0 ? ((totalUsd - prevTotalUsd) / prevTotalUsd) * 100 : null;
+      previousPeriod = {
+        total: toDisplay(prevTotalUsd),
+        count: prevAgg._count,
+        changePercent: changePercent === null ? null : Math.round(changePercent * 10) / 10,
+      };
+    }
   }
 
   // Convert all amounts to display currency
@@ -188,6 +238,7 @@ export const GET = authMiddleware(async (req: NextRequest, { userId }) => {
     topCategory: convertedTopCategory,
     categoryDistribution: convertedCategoryDistribution,
     dailyTrend: convertedDailyTrend,
+    previousPeriod,
     ...(isSharedSpace ? { userDistribution: convertedUserDistribution } : {}),
     // Keep legacy fields for backwards compat
     totalUsd: Math.round(totalUsd * 100) / 100,

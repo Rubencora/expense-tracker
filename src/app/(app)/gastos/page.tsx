@@ -32,6 +32,7 @@ import MonthlyExpensesChart, {
   monthTitle,
   type MonthlyPoint,
 } from "@/components/expenses/MonthlyExpensesChart";
+import PeriodSummary from "@/components/expenses/PeriodSummary";
 import * as XLSX from "xlsx";
 
 interface Category {
@@ -265,6 +266,38 @@ export default function GastosPage() {
     }
   }, [isSharedSpace, selectedSpace, showAddDialog]);
 
+  /**
+   * ISO window the active period resolves to. Shared by the expense list and
+   * the period summary so both always describe exactly the same range.
+   * `null` means "unbounded on that side".
+   */
+  const dateWindow = useMemo<{ from: string | null; to: string | null }>(() => {
+    const now = new Date();
+    if (period === "today") {
+      return {
+        from: new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString(),
+        to: null,
+      };
+    }
+    if (period === "week") {
+      const weekAgo = new Date(now);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      return { from: weekAgo.toISOString(), to: null };
+    }
+    if (period === "month") {
+      return {
+        from: new Date(monthCursor.year, monthCursor.month - 1, 1).toISOString(),
+        // Last millisecond of the month: the API filters with `lte`.
+        to: new Date(monthCursor.year, monthCursor.month, 0, 23, 59, 59, 999).toISOString(),
+      };
+    }
+    if (period === "range") {
+      const range = resolveRange(rangeFrom, rangeTo);
+      return { from: range.from?.toISOString() ?? null, to: range.to?.toISOString() ?? null };
+    }
+    return { from: null, to: null };
+  }, [period, monthCursor, rangeFrom, rangeTo]);
+
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
     try {
@@ -273,22 +306,8 @@ export default function GastosPage() {
       if (selectedSpace !== "all") params.set("spaceId", selectedSpace);
       if (search) params.set("search", search);
 
-      const now = new Date();
-      if (period === "today") {
-        params.set("dateFrom", new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString());
-      } else if (period === "week") {
-        const weekAgo = new Date(now);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        params.set("dateFrom", weekAgo.toISOString());
-      } else if (period === "month") {
-        params.set("dateFrom", new Date(monthCursor.year, monthCursor.month - 1, 1).toISOString());
-        // Last millisecond of the month: the API filters with `lte`.
-        params.set("dateTo", new Date(monthCursor.year, monthCursor.month, 0, 23, 59, 59, 999).toISOString());
-      } else if (period === "range") {
-        const range = resolveRange(rangeFrom, rangeTo);
-        if (range.from) params.set("dateFrom", range.from.toISOString());
-        if (range.to) params.set("dateTo", range.to.toISOString());
-      }
+      if (dateWindow.from) params.set("dateFrom", dateWindow.from);
+      if (dateWindow.to) params.set("dateTo", dateWindow.to);
 
       params.set("limit", "200");
 
@@ -318,7 +337,7 @@ export default function GastosPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, selectedSpace, search, period, monthCursor, rangeFrom, rangeTo]);
+  }, [selectedCategory, selectedSpace, search, dateWindow]);
 
   // Last-12-months overview. Independent of the date filter, but scoped to
   // the same space/category so the chart matches what is selected.
@@ -691,6 +710,22 @@ export default function GastosPage() {
     setPeriod("month");
     setMonthCursor({ year, month });
   }, []);
+
+  /** Short human name of the active window, shown as the summary heading. */
+  const periodLabel = useMemo(() => {
+    if (period === "month") return monthLabel;
+    if (period === "today") return "Hoy";
+    if (period === "week") return "Últimos 7 días";
+    if (period === "range") {
+      if (!dateWindow.from) return "Rango sin definir";
+      const fmt = (iso: string) =>
+        new Date(iso).toLocaleDateString("es-CO", { day: "numeric", month: "short" });
+      return dateWindow.to
+        ? `${fmt(dateWindow.from)} – ${fmt(dateWindow.to)}`
+        : fmt(dateWindow.from);
+    }
+    return "Todo el tiempo";
+  }, [period, monthLabel, dateWindow]);
 
   const countLabel =
     period === "month"
@@ -1140,6 +1175,15 @@ export default function GastosPage() {
         loading={monthlyLoading}
         activeKey={period === "month" ? monthKey(monthCursor.year, monthCursor.month) : null}
         onSelectMonth={handleSelectMonth}
+      />
+
+      <PeriodSummary
+        spaceId={selectedSpace}
+        categoryId={selectedCategory}
+        dateFrom={dateWindow.from}
+        dateTo={dateWindow.to}
+        period={period}
+        periodLabel={periodLabel}
       />
 
       {/* Expenses List */}
