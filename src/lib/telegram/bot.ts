@@ -1249,6 +1249,38 @@ export async function requestAmountViaTelegram(
   }
 }
 
+// Notify a successfully registered expense (with a real amount) from the
+// Apple Pay shortcut, mirroring requestAmountViaTelegram but for the happy path.
+export async function notifyExpenseRegistered(
+  userId: string,
+  merchant: string,
+  amount: number,
+  currency: "COP" | "USD",
+  category: { name: string; emoji: string }
+): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { telegramChatId: true },
+    });
+
+    if (!user?.telegramChatId) return;
+
+    const formatted = currency === "COP" ? `$${fmtCOP(amount)} COP` : `$${fmt(amount)} USD`;
+
+    const bot = getBot();
+    await bot.api.sendMessage(
+      user.telegramChatId,
+      `💳 *Gasto registrado*\n\n` +
+        `🏪 ${merchant} - ${formatted}\n` +
+        `${category.emoji} ${category.name}`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (error) {
+    console.error("[BOT] Error notifying registered expense:", error);
+  }
+}
+
 // Singleton bot instance
 let botInstance: Bot | null = null;
 

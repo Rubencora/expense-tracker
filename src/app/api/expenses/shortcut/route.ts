@@ -3,7 +3,7 @@ import { authenticateByApiToken } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { convertToUSD } from "@/lib/currency";
 import { classifyExpense } from "@/lib/ai/classify";
-import { requestAmountViaTelegram } from "@/lib/telegram/bot";
+import { requestAmountViaTelegram, notifyExpenseRegistered } from "@/lib/telegram/bot";
 import { sendPushNotification } from "@/lib/push";
 import { parseShortcutPayload, type Currency } from "@/lib/shortcut-parse";
 import type { Prisma } from "@/generated/prisma/client";
@@ -171,6 +171,10 @@ export async function POST(req: NextRequest) {
         tag: `pending-amount-${expense.id}`,
         url: "/gastos?pendientes=1",
       }).catch((err) => console.error("[SHORTCUT] Push notification error:", err));
+    } else {
+      notifyExpenseRegistered(userId, merchant, amount, currency, expense.category).catch((err) =>
+        console.error("[SHORTCUT] Telegram notification error:", err)
+      );
     }
 
     return NextResponse.json(
