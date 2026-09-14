@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { IncomeFrequency } from "@/generated/prisma/client";
+import { getLatestDebtSummary } from "@/lib/debts-summary";
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -85,7 +86,12 @@ export const GET = authMiddleware(async (req, { userId }) => {
     0
   );
 
-  const availableToSpend = monthlyIncome - monthlyExpenses - monthlySavings;
+  // Outstanding debt from the Deudas module (latest month with real data),
+  // so "disponible" reflects what is actually owed, not just this month's cash flow.
+  const debtSummary = await getLatestDebtSummary(userId);
+  const outstandingDebtUsd = debtSummary?.totalDebtUsd ?? 0;
+
+  const availableToSpend = monthlyIncome - monthlyExpenses - monthlySavings - outstandingDebtUsd;
 
   const daysRemaining = daysRemainingInMonth(now);
   const dailyBudget = availableToSpend > 0 ? availableToSpend / daysRemaining : 0;
@@ -100,5 +106,13 @@ export const GET = authMiddleware(async (req, { userId }) => {
     daysRemaining,
     dailyBudget: round2(dailyBudget),
     activeGoals,
+    outstandingDebt: debtSummary
+      ? {
+          usd: round2(debtSummary.totalDebtUsd),
+          cop: Math.round(debtSummary.totalDebtCop),
+          year: debtSummary.year,
+          month: debtSummary.month,
+        }
+      : null,
   });
 });

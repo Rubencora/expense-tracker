@@ -70,6 +70,7 @@ interface CashFlowData {
   lastMonthExpenses: number;
   lastMonthRatio: number;
   monthlyHistory: { month: string; income: number; expenses: number; balance: number }[];
+  outstandingDebt: { usd: number; cop: number; year: number; month: number } | null;
 }
 
 interface AvailableToSpendData {
@@ -80,6 +81,7 @@ interface AvailableToSpendData {
   availableToSpend: number;
   daysRemaining: number;
   dailyBudget: number;
+  outstandingDebt: { usd: number; cop: number; year: number; month: number } | null;
   activeGoals: {
     id: string;
     name: string;
@@ -97,6 +99,10 @@ interface SpaceInfo {
 }
 
 const CHART_COLORS = ["#10B981", "#3B82F6", "#F59E0B", "#8B5CF6", "#EF4444", "#EC4899", "#14B8A6", "#F97316", "#6366F1"];
+const SHORT_MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+function shortMonthLabel(year: number, month: number): string {
+  return `${SHORT_MONTHS[month - 1]} ${String(year).slice(-2)}`;
+}
 const USER_COLORS = ["#8B5CF6", "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#EC4899", "#14B8A6", "#F97316"];
 
 const TOOLTIP_STYLE = {
@@ -528,6 +534,14 @@ export default function DashboardPage() {
               <p className="text-xs text-text-muted mt-1">
                 {cashFlow.savingsRate > 0 ? `${cashFlow.savingsRate.toFixed(0)}% ahorro` : "Sin ahorro"}
               </p>
+              {cashFlow.outstandingDebt && cashFlow.outstandingDebt.usd > 0 && (
+                <Link
+                  href="/deudas"
+                  className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
+                >
+                  Incluye deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtUsd(cashFlow.outstandingDebt.usd)} {cur}
+                </Link>
+              )}
             </div>
 
             <div className="glass-card rounded-2xl p-5">
@@ -542,6 +556,14 @@ export default function DashboardPage() {
                 <span className="text-xs font-normal text-text-muted ml-1.5">{cur}</span>
               </p>
               <p className="text-xs text-text-muted mt-1">Resto del mes</p>
+              {cashFlow.outstandingDebt && cashFlow.outstandingDebt.usd > 0 && (
+                <Link
+                  href="/deudas"
+                  className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
+                >
+                  Incluye deuda {shortMonthLabel(cashFlow.outstandingDebt.year, cashFlow.outstandingDebt.month)}: -{fmtUsd(cashFlow.outstandingDebt.usd)} {cur}
+                </Link>
+              )}
             </div>
 
             <div className="glass-card rounded-2xl p-5">
@@ -630,6 +652,14 @@ export default function DashboardPage() {
               <p className="text-xs text-text-muted mt-1">
                 {fmtUsd(availableData.dailyBudget)}/dia · {availableData.daysRemaining}d restantes
               </p>
+              {availableData.outstandingDebt && availableData.outstandingDebt.usd > 0 && (
+                <Link
+                  href="/deudas"
+                  className="block text-[11px] text-amber-accent hover:text-amber-accent/80 transition-colors mt-1"
+                >
+                  Incluye deuda {shortMonthLabel(availableData.outstandingDebt.year, availableData.outstandingDebt.month)}: -{fmtUsd(availableData.outstandingDebt.usd)} {cur}
+                </Link>
+              )}
             </div>
 
             <div className="glass-card rounded-2xl p-5">

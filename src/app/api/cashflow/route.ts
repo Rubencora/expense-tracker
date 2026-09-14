@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { IncomeFrequency } from "@/generated/prisma/client";
+import { getLatestDebtSummary } from "@/lib/debts-summary";
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -71,12 +72,19 @@ export const GET = authMiddleware(async (req, { userId }) => {
   });
   const lastMonthExpenses = lastMonthAgg._sum.amountUsd || 0;
 
+  // --- Outstanding debt (Deudas module) ---
+  // Folded into the balance so it reflects what the user actually owes, not
+  // just income vs. expenses. Uses the latest month in Deudas that has real
+  // data (e.g. August's total while September is still empty).
+  const debtSummary = await getLatestDebtSummary(userId);
+  const outstandingDebtUsd = debtSummary?.totalDebtUsd ?? 0;
+
   // --- Derived metrics ---
-  const balance = monthlyIncome - monthlyExpenses;
+  const balance = monthlyIncome - monthlyExpenses - outstandingDebtUsd;
   const savingsRate = balance > 0 ? (balance / monthlyIncome) * 100 : 0;
   const expenseRatio = monthlyIncome > 0 ? monthlyExpenses / monthlyIncome : 0;
   const remaining = daysRemainingInMonth(now);
-  const dailyAvailable = remaining > 0 ? (monthlyIncome - monthlyExpenses) / remaining : 0;
+  const dailyAvailable = remaining > 0 ? balance / remaining : 0;
   const lastMonthRatio = monthlyIncome > 0 ? lastMonthExpenses / monthlyIncome : 0;
 
   // --- Monthly history (last 6 months) ---
@@ -116,5 +124,13 @@ export const GET = authMiddleware(async (req, { userId }) => {
     lastMonthExpenses: round2(lastMonthExpenses),
     lastMonthRatio: round2(lastMonthRatio),
     monthlyHistory,
+    outstandingDebt: debtSummary
+      ? {
+          usd: round2(debtSummary.totalDebtUsd),
+          cop: Math.round(debtSummary.totalDebtCop),
+          year: debtSummary.year,
+          month: debtSummary.month,
+        }
+      : null,
   });
 });
