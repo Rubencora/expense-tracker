@@ -9,7 +9,7 @@ App web de registro de gastos personales con bot de Telegram, captura automatica
 - **Base de datos:** PostgreSQL via Prisma 7 ORM (Neon serverless)
 - **Auth:** JWT con access + refresh tokens
 - **Bot:** Telegram con grammy
-- **IA:** OpenAI API (gpt-4o-mini) para clasificacion de gastos
+- **IA:** Anthropic API (claude-haiku-4-5-20251001) para clasificacion de gastos, insights y chat
 - **Graficas:** recharts
 - **Exportacion:** xlsx (Excel)
 - **Deploy:** Vercel
@@ -71,13 +71,13 @@ src/
     auth.ts               # JWT helpers (sign, verify, middleware)
     api-client.ts         # Frontend fetch wrapper con token refresh
     ai/
-      classify.ts         # Clasificacion de gastos con OpenAI (gpt-4o-mini)
+      classify.ts         # Clasificacion de gastos con Anthropic (claude-haiku-4-5-20251001)
     currency.ts           # Parser COP/USD + conversion
     shortcut-parse.ts     # Parser tolerante del payload del atajo de Apple Pay (montos como texto/anidados, monedas)
     debts.ts              # Calculos puros del Balance de deudas (replica las formulas del Excel)
     loans.ts              # Amortizacion francesa (PMT/IPMT/PPMT) + saldo real por modo (SCHEDULE | PAYMENTS)
     telegram/
-      bot.ts              # Bot de Telegram con grammy + OpenAI
+      bot.ts              # Bot de Telegram con grammy + Anthropic
   components/
     ui/                   # shadcn/ui components
     onboarding/           # Modal paso a paso

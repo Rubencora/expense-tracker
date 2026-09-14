@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -18,7 +18,7 @@ const chatSchema = z.object({
 });
 
 export const POST = authMiddleware(async (req: NextRequest, { userId }) => {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
       { error: "El servicio de chat no esta disponible en este momento. Contacta al administrador." },
       { status: 503 }
@@ -182,30 +182,27 @@ INSTRUCCIONES:
 - Usa formato simple, sin markdown excesivo.
 - Los montos estan en USD para normalizacion interna, pero puedes mencionar que la moneda base es USD.`;
 
-    // --- Call OpenAI ---
+    // --- Call Claude ---
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: "system", content: systemPrompt },
-      ...history.map(
-        (h) =>
-          ({
-            role: h.role,
-            content: h.content,
-          }) as OpenAI.ChatCompletionMessageParam
-      ),
+    const messages: Anthropic.MessageParam[] = [
+      ...history.map((h) => ({ role: h.role, content: h.content }) as Anthropic.MessageParam),
       { role: "user", content: message },
     ];
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+    const completion = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      system: systemPrompt,
       messages,
       max_tokens: 500,
       temperature: 0.7,
     });
 
-    const reply = completion.choices[0]?.message?.content ?? "No pude generar una respuesta. Intenta de nuevo.";
+    const reply =
+      completion.content[0]?.type === "text"
+        ? completion.content[0].text
+        : "No pude generar una respuesta. Intenta de nuevo.";
 
     return NextResponse.json({ reply });
   } catch (error) {

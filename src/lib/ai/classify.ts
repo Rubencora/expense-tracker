@@ -1,4 +1,5 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { extractJsonBlock } from "./json-extract";
 
 interface Category {
   id: string;
@@ -41,26 +42,23 @@ export async function classifyExpense(
     description: "Gasto general",
   };
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return fallback;
   }
 
   try {
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+    const client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
     const categoryList = categories
       .map((c) => `- ID: "${c.id}" | Nombre: "${c.name}" ${c.emoji}`)
       .join("\n");
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 200,
-      messages: [
-        {
-          role: "system",
-          content: `Eres un clasificador de gastos para el mercado colombiano.
+      system: `Eres un clasificador de gastos para el mercado colombiano.
 Dado el nombre de un comercio, debes:
 1. Identificar que tipo de negocio es (entender contexto colombiano: Exito/Carulla/Jumbo = supermercado, Farmatodo/Drogueria = farmacia, Rappi/iFood = delivery comida, Uber/DiDi/InDriver = transporte, etc.)
 2. Asignar la categoria mas apropiada de la lista
@@ -70,7 +68,7 @@ CATEGORIAS DISPONIBLES:
 ${categoryList}
 
 Responde SOLO con JSON valido: { "category_id": "ID_AQUI", "description": "Descripcion aqui" }`,
-        },
+      messages: [
         {
           role: "user",
           content: `Clasifica este comercio: "${merchant}"`,
@@ -78,13 +76,13 @@ Responde SOLO con JSON valido: { "category_id": "ID_AQUI", "description": "Descr
       ],
     });
 
-    const text = response.choices[0]?.message?.content || "";
+    const text = response.content[0]?.type === "text" ? response.content[0].text : "";
 
     // Parse JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return fallback;
+    const jsonBlock = extractJsonBlock(text);
+    if (!jsonBlock) return fallback;
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonBlock);
     const result: ClassificationResult = {
       categoryId: parsed.category_id || fallback.categoryId,
       description: parsed.description || "Gasto general",

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { extractJsonBlock } from "@/lib/ai/json-extract";
 import { authMiddleware } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { IncomeFrequency } from "@/generated/prisma/client";
@@ -130,10 +131,10 @@ export const GET = authMiddleware(async (_req: NextRequest, { userId }) => {
     });
 
     // Try AI-powered insights
-    if (process.env.OPENAI_API_KEY) {
+    if (process.env.ANTHROPIC_API_KEY) {
       try {
-        const client = new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
+        const client = new Anthropic({
+          apiKey: process.env.ANTHROPIC_API_KEY,
         });
 
         const topCatSummary = topCategories
@@ -192,18 +193,18 @@ Directrices para los insights:
 
 Responde SOLO con un JSON valido: un array de exactamente 4 strings. Ejemplo: ["insight 1", "insight 2", "insight 3", "insight 4"]`;
 
-        const response = await client.chat.completions.create({
-          model: "gpt-4o-mini",
+        const response = await client.messages.create({
+          model: "claude-haiku-4-5-20251001",
           max_tokens: 600,
           messages: [
             { role: "user", content: prompt },
           ],
         });
 
-        const text = response.choices[0]?.message?.content || "";
-        const jsonMatch = text.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
+        const text = response.content[0]?.type === "text" ? response.content[0].text : "";
+        const jsonBlock = extractJsonBlock(text);
+        if (jsonBlock) {
+          const parsed = JSON.parse(jsonBlock);
           if (Array.isArray(parsed) && parsed.every((i) => typeof i === "string")) {
             return NextResponse.json({ insights: parsed.slice(0, 4) });
           }

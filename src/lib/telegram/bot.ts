@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard, Context } from "grammy";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { extractJsonBlock } from "@/lib/ai/json-extract";
 import { prisma } from "@/lib/prisma";
 import { convertToUSD } from "@/lib/currency";
 import { classifyExpense } from "@/lib/ai/classify";
@@ -858,29 +859,25 @@ async function findUserByChatId(chatId: string) {
 
 async function processExpenseText(ctx: Context, userId: string, text: string) {
   try {
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
+    const client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
     });
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 150,
-      messages: [
-        {
-          role: "system",
-          content: 'Eres un parser de gastos. Del mensaje del usuario extrae merchant (nombre del comercio), amount (numero), y currency (COP o USD). Usa las reglas de formato colombiano: si despues del punto hay 3+ digitos es COP (miles), si hay 1-2 digitos es USD. Sin punto y >= 100, es COP. Responde SOLO JSON: { "merchant": "...", "amount": 0, "currency": "COP" }',
-        },
-        { role: "user", content: text },
-      ],
+      system:
+        'Eres un parser de gastos. Del mensaje del usuario extrae merchant (nombre del comercio), amount (numero), y currency (COP o USD). Usa las reglas de formato colombiano: si despues del punto hay 3+ digitos es COP (miles), si hay 1-2 digitos es USD. Sin punto y >= 100, es COP. Responde SOLO JSON: { "merchant": "...", "amount": 0, "currency": "COP" }',
+      messages: [{ role: "user", content: text }],
     });
 
-    const responseText = response.choices[0]?.message?.content || "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    const responseText = response.content[0]?.type === "text" ? response.content[0].text : "";
+    const jsonBlock = extractJsonBlock(responseText);
+    if (!jsonBlock) {
       return ctx.reply("No pude entender tu mensaje. Intenta con formato: 'Comercio Monto'");
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonBlock);
     const merchant = parsed.merchant as string;
     const amount = parsed.amount as number;
     const currency = parsed.currency as "COP" | "USD";
@@ -1078,19 +1075,20 @@ INSTRUCCIONES:
 - Si no es sobre finanzas, redirige amablemente.
 - No uses markdown excesivo, solo *negritas* cuando sea necesario.`;
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: question },
-      ],
+    const completion = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      system: systemPrompt,
+      messages: [{ role: "user", content: question }],
       max_tokens: 300,
       temperature: 0.7,
     });
 
-    const reply = completion.choices[0]?.message?.content ?? "No pude generar una respuesta. Intenta de nuevo.";
+    const reply =
+      completion.content[0]?.type === "text"
+        ? completion.content[0].text
+        : "No pude generar una respuesta. Intenta de nuevo.";
 
     await ctx.reply(`🤖 ${reply}`, { parse_mode: "Markdown" });
   } catch (error) {
