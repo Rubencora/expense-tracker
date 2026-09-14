@@ -2,7 +2,7 @@
 // Mutation pages (gastos, ingresos, metas) emit events;
 // the dashboard listens and refetches when data changes.
 
-export type DataEventType = "expenses" | "incomes" | "goals";
+export type DataEventType = "expenses" | "incomes" | "goals" | "debts";
 
 const EVENT_NAME = "data-changed";
 

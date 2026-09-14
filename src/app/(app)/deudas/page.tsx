@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "@/lib/api-client";
+import { emitDataChanged } from "@/lib/data-events";
 import {
   DEBT_KIND_LABELS,
   addMonths,
@@ -379,6 +380,7 @@ export default function DeudasPage() {
           body: JSON.stringify({ year: target.year, month: target.month }),
         });
         toast.success(`Columna ${monthLabel(target.year, target.month)} eliminada`);
+        emitDataChanged("debts");
       }
       changeFutureMonths(-1);
     } catch (err) {
@@ -520,6 +522,7 @@ export default function DeudasPage() {
             [field]: value,
           }),
         });
+        emitDataChanged("debts");
         await fetchBalance(false);
       } catch (err) {
         setData(snapshot);
@@ -573,6 +576,7 @@ export default function DeudasPage() {
             [field]: value,
           }),
         });
+        emitDataChanged("debts");
         await fetchBalance(false);
       } catch (err) {
         setData(snapshot);
@@ -643,6 +647,7 @@ export default function DeudasPage() {
       }
       setDialogOpen(false);
       resetForm();
+      emitDataChanged("debts");
       await fetchBalance(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al guardar la deuda");
@@ -658,6 +663,7 @@ export default function DeudasPage() {
         body: JSON.stringify({ isActive: !debt.isActive }),
       });
       toast.success(debt.isActive ? "Deuda desactivada" : "Deuda activada");
+      emitDataChanged("debts");
       await fetchBalance(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al actualizar");
@@ -672,6 +678,7 @@ export default function DeudasPage() {
     try {
       await apiClient(`/api/debts/${debt.id}`, { method: "DELETE" });
       toast.success("Deuda eliminada");
+      emitDataChanged("debts");
       await fetchBalance(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al eliminar");
